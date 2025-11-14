@@ -5,52 +5,24 @@ import '../Dashboard.css';
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 function Dashboard({ user, token, onViewChange }) {
-  const [nearbySessions, setNearbySessions] = useState([]);
+  const [mySessions, setMySessions] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [userLocation, setUserLocation] = useState(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    getUserLocation();
+    fetchMySessions();
   }, []);
 
-  const getUserLocation = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const location = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
-          };
-          setUserLocation(location);
-          fetchNearbySessions(location);
-        },
-        (error) => {
-          setError('Unable to get your location. Please enable location services.');
-          console.error('Geolocation error:', error);
-        }
-      );
-    } else {
-      setError('Geolocation is not supported by your browser.');
-    }
-  };
-
-  const fetchNearbySessions = async (location) => {
+  const fetchMySessions = async () => {
     setLoading(true);
     try {
-      const maxDistance = (user.preferences?.max_distance || 5) * 1000; // Convert km to meters
-      const response = await axios.get(`${API_URL}/sessions/nearby`, {
-        params: {
-          lat: location.lat,
-          lng: location.lng,
-          maxDistance
-        },
+      const response = await axios.get(`${API_URL}/sessions/my-sessions`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setNearbySessions(response.data.sessions);
+      setMySessions(response.data.sessions);
     } catch (err) {
       console.error('Error fetching sessions:', err);
-      setError('Failed to load nearby sessions');
+      setError('Failed to load your sessions');
     } finally {
       setLoading(false);
     }
@@ -79,11 +51,22 @@ function Dashboard({ user, token, onViewChange }) {
     return `${hours}h ${diffMins % 60}m`;
   };
 
+  const getStatusBadge = (status) => {
+    const statusMap = {
+      'pending_admin_approval': { text: 'Pending Admin Approval', class: 'status-pending' },
+      'active': { text: 'Active', class: 'status-active' },
+      'in_progress': { text: 'In Progress', class: 'status-progress' },
+      'completed': { text: 'Completed', class: 'status-completed' },
+      'cancelled': { text: 'Cancelled', class: 'status-cancelled' }
+    };
+    return statusMap[status] || { text: status, class: 'status-default' };
+  };
+
   return (
     <div className="dashboard-container">
       <div className="dashboard-header">
         <h2>Welcome back, {user.name}! 👋</h2>
-        <p>Find study sessions happening near you right now</p>
+        <p>Manage your study sessions and find new ones</p>
       </div>
 
       <div className="action-cards">
@@ -108,52 +91,58 @@ function Dashboard({ user, token, onViewChange }) {
 
       <div className="nearby-sessions-section">
         <div className="section-header">
-          <h3>Nearby Sessions</h3>
-          {userLocation && (
-            <button onClick={() => fetchNearbySessions(userLocation)} className="refresh-btn">
-              🔄 Refresh
-            </button>
-          )}
+          <h3>My Sessions</h3>
+          <button onClick={fetchMySessions} className="refresh-btn">
+            🔄 Refresh
+          </button>
         </div>
 
         {error && <div className="error-box">{error}</div>}
 
         {loading ? (
           <div className="loading">Loading sessions...</div>
-        ) : nearbySessions.length === 0 ? (
+        ) : mySessions.length === 0 ? (
           <div className="empty-state">
-            <p>No sessions found nearby at the moment.</p>
-            <p>Be the first to create one!</p>
+            <p>You haven't joined any sessions yet.</p>
+            <p>Create a session or browse available ones!</p>
           </div>
         ) : (
           <div className="sessions-grid">
-            {nearbySessions.map(session => (
-              <div 
-                key={session.session_id} 
-                className="session-card"
-                onClick={() => onViewChange('session-details', session)}
-              >
-                <div className="session-header">
-                  <h4>{session.subject}</h4>
-                  <span className="time-badge">{getTimeUntilStart(session.start_time)}</span>
+            {mySessions.map(session => {
+              const statusBadge = getStatusBadge(session.status);
+              return (
+                <div 
+                  key={session.session_id} 
+                  className="session-card"
+                  onClick={() => onViewChange('session-details', session)}
+                >
+                  <div className="session-header">
+                    <h4>{session.subject}</h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-end' }}>
+                      <span className={`status-badge ${statusBadge.class}`}>{statusBadge.text}</span>
+                      {session.status === 'active' && (
+                        <span className="time-badge">{getTimeUntilStart(session.start_time)}</span>
+                      )}
+                    </div>
+                  </div>
+                  <p className="session-topic">{session.topic}</p>
+                  <div className="session-meta">
+                    <div className="meta-item">
+                      📍 {session.location.venue_name}
+                    </div>
+                    <div className="meta-item">
+                      ⏰ {formatDateTime(session.start_time)}
+                    </div>
+                    <div className="meta-item">
+                      👥 {session.participants.length}/{session.max_participants} participants
+                    </div>
+                    <div className="meta-item">
+                      ⏱️ {session.duration} min
+                    </div>
+                  </div>
                 </div>
-                <p className="session-topic">{session.topic}</p>
-                <div className="session-meta">
-                  <div className="meta-item">
-                    📍 {session.location.venue_name}
-                  </div>
-                  <div className="meta-item">
-                    ⏰ {formatDateTime(session.start_time)}
-                  </div>
-                  <div className="meta-item">
-                    👥 {session.participants.length}/{session.max_participants} participants
-                  </div>
-                  <div className="meta-item">
-                    ⏱️ {session.duration} min
-                  </div>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

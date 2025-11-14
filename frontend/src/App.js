@@ -85,7 +85,6 @@ function App() {
           <h1>⚡ FlashMob Learning</h1>
           {token && (
             <div className="header-actions">
-              <Notifications user={user} token={token} />
               <span className="user-greeting">Hello, {user?.name}!</span>
               <button onClick={() => setCurrentView('dashboard')} className="nav-btn">Dashboard</button>
               <button onClick={() => setCurrentView('profile')} className="nav-btn">Profile</button>

@@ -239,3 +239,43 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Add this to the existing Dashboard.css file */
+
+.status-badge {
+  padding: 0.3rem 0.8rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.status-pending {
+  background: #fff3e0;
+  color: #ff9800;
+}
+
+.status-active {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.status-progress {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.status-completed {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.status-cancelled {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.status-default {
+  background: #f0f0f0;
+  color: #666;
+}

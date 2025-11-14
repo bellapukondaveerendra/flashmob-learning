@@ -50,8 +50,21 @@ const authenticateAdmin = async (req, res, next) => {
 
 // Helper function to generate session ID
 const generateSessionId = async () => {
-  const count = await models.Session.countDocuments();
-  return `S${new Date().getFullYear()}${String(count + 1).padStart(4, '0')}`;
+  const year = new Date().getFullYear();
+  
+  // Find the highest session_id for the current year
+  const lastSession = await models.Session.findOne({
+    session_id: new RegExp(`^S${year}`)
+  }).sort({ session_id: -1 });
+
+  let nextNumber = 1;
+  if (lastSession) {
+    // Extract the number part and increment
+    const lastNumber = parseInt(lastSession.session_id.substring(5));
+    nextNumber = lastNumber + 1;
+  }
+
+  return `S${year}${String(nextNumber).padStart(4, '0')}`;
 };
 
 // Helper function to generate user ID
@@ -139,6 +152,42 @@ app.post('/api/auth/login', async (req, res) => {
         active_sessions: user.active_sessions
       }
     });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+app.get('/api/sessions/my-sessions', authenticateToken, async (req, res) => {
+  try {
+    // Find all sessions where user is a participant
+    const sessions = await models.Session.find({
+      participants: req.user.user_id
+    }).sort({ start_time: 1 });
+
+    // Also find sessions where user has pending join requests
+    const pendingRequests = await models.JoinRequest.find({
+      user_id: req.user.user_id,
+      status: 'pending'
+    });
+
+    // Get sessions for pending requests
+    const pendingSessionIds = pendingRequests.map(req => req.session_id);
+    const pendingSessions = await models.Session.find({
+      session_id: { $in: pendingSessionIds }
+    });
+
+    // Combine and remove duplicates
+    const allSessions = [...sessions];
+    pendingSessions.forEach(ps => {
+      if (!allSessions.find(s => s.session_id === ps.session_id)) {
+        allSessions.push(ps);
+      }
+    });
+
+    // Sort by start time
+    allSessions.sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+
+    res.json({ sessions: allSessions });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }

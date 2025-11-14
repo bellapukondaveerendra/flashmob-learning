@@ -81,59 +81,88 @@ function CreateSession({ user, token, onBack }) {
     }
   };
 
-  const getMinStartTime = () => {
-    const now = new Date();
-    now.setMinutes(now.getMinutes() + 15);
-    return now.toISOString().slice(0, 16);
+const getMinStartTime = () => {
+  const now = new Date();
+  now.setMinutes(now.getMinutes() + 15);
+  // Format: YYYY-MM-DDTHH:MM
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
+
+const getMaxStartTime = () => {
+  const now = new Date();
+  now.setMinutes(now.getMinutes() + 60);
+  // Format: YYYY-MM-DDTHH:MM
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
+
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setError('');
+  setLoading(true);
+
+  if (!formData.subject || !formData.topic || !formData.venue_id) {
+    setError('Please fill in all required fields');
+    setLoading(false);
+    return;
+  }
+
+  // Validate start time
+  const now = new Date();
+  const selectedTime = new Date(formData.start_time);
+  const diffMinutes = (selectedTime - now) / 60000;
+
+  if (diffMinutes < 15) {
+    setError('Session must start at least 15 minutes from now');
+    setLoading(false);
+    return;
+  }
+
+  if (diffMinutes > 60) {
+    setError('Session must start within 60 minutes from now');
+    setLoading(false);
+    return;
+  }
+
+  const selectedVenue = venues.find(v => v.venue_id === formData.venue_id);
+
+  const sessionData = {
+    subject: formData.subject,
+    topic: formData.topic,
+    location: {
+      venue_id: formData.venue_id,
+      venue_name: formData.venue_name,
+      coordinates: selectedVenue ? selectedVenue.coordinates : { lat: 0, lng: 0 },
+      meeting_spot: formData.meeting_spot
+    },
+    start_time: new Date(formData.start_time).toISOString(),
+    duration: parseInt(formData.duration),
+    max_participants: parseInt(formData.max_participants)
   };
 
-  const getMaxStartTime = () => {
-    const now = new Date();
-    now.setMinutes(now.getMinutes() + 60);
-    return now.toISOString().slice(0, 16);
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-
-    if (!formData.subject || !formData.topic || !formData.venue_id) {
-      setError('Please fill in all required fields');
-      setLoading(false);
-      return;
-    }
-
-    const selectedVenue = venues.find(v => v.venue_id === formData.venue_id);
-
-    const sessionData = {
-      subject: formData.subject,
-      topic: formData.topic,
-      location: {
-        venue_id: formData.venue_id,
-        venue_name: formData.venue_name,
-        coordinates: selectedVenue ? selectedVenue.coordinates : userLocation,
-        meeting_spot: formData.meeting_spot
-      },
-      start_time: new Date(formData.start_time).toISOString(),
-      duration: parseInt(formData.duration),
-      max_participants: parseInt(formData.max_participants)
-    };
-
-    try {
-      await axios.post(`${API_URL}/sessions`, sessionData, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setSuccess(true);
-      setTimeout(() => {
-        onBack();
-      }, 2000);
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to create session');
-    } finally {
-      setLoading(false);
-    }
-  };
+  try {
+    await axios.post(`${API_URL}/sessions`, sessionData, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    setSuccess(true);
+    setTimeout(() => {
+      onBack();
+    }, 2000);
+  } catch (err) {
+    setError(err.response?.data?.message || 'Failed to create session');
+  } finally {
+    setLoading(false);
+  }
+};
 
   if (success) {
     return (

@@ -7,7 +7,8 @@ const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 function SessionDetails({ session: initialSession, user, token, onBack }) {
   const [session, setSession] = useState(initialSession);
   const [participants, setParticipants] = useState([]);
-  const [pendingRequests, setPendingRequests] = useState([]);
+  const [joinRequests, setJoinRequests] = useState([]);
+  const [userJoinRequest, setUserJoinRequest] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -16,8 +17,9 @@ function SessionDetails({ session: initialSession, user, token, onBack }) {
     if (initialSession) {
       fetchSessionDetails();
       if (initialSession.creator_id === user.user_id) {
-        fetchPendingRequests();
+        fetchJoinRequests();
       }
+      checkUserJoinRequest();
     }
   }, [initialSession]);
 
@@ -34,53 +36,71 @@ function SessionDetails({ session: initialSession, user, token, onBack }) {
     }
   };
 
-  const fetchPendingRequests = async () => {
+  const fetchJoinRequests = async () => {
     try {
-      const response = await axios.get(`${API_URL}/sessions/${initialSession.session_id}/requests`, {
+      const response = await axios.get(`${API_URL}/sessions/${initialSession.session_id}/join-requests`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setPendingRequests(response.data.requests);
+      setJoinRequests(response.data.requests);
     } catch (err) {
-      console.error('Error fetching pending requests:', err);
+      console.error('Error fetching join requests:', err);
     }
   };
 
-  const handleApproveRequest = async (userId) => {
+  const checkUserJoinRequest = async () => {
+    // Check if current user has a pending join request
+    try {
+      const response = await axios.get(`${API_URL}/sessions/${initialSession.session_id}/join-requests`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const userRequest = response.data.requests.find(req => req.user_id === user.user_id);
+      setUserJoinRequest(userRequest);
+    } catch (err) {
+      // User is not the creator, so they can't see all join requests
+      // This is expected
+    }
+  };
+
+  const handleApproveJoinRequest = async (requestId) => {
     setLoading(true);
     setError('');
     setSuccess('');
 
     try {
       await axios.post(
-        `${API_URL}/sessions/${session.session_id}/approve/${userId}`,
+        `${API_URL}/sessions/${session.session_id}/approve-join/${requestId}`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setSuccess('Join request approved!');
       fetchSessionDetails();
-      fetchPendingRequests();
+      fetchJoinRequests();
+      setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to approve request');
+      setTimeout(() => setError(''), 3000);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleRejectRequest = async (userId) => {
+  const handleRejectJoinRequest = async (requestId) => {
     setLoading(true);
     setError('');
     setSuccess('');
 
     try {
       await axios.post(
-        `${API_URL}/sessions/${session.session_id}/reject/${userId}`,
+        `${API_URL}/sessions/${session.session_id}/reject-join/${requestId}`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setSuccess('Join request rejected');
-      fetchPendingRequests();
+      fetchJoinRequests();
+      setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to reject request');
+      setTimeout(() => setError(''), 3000);
     } finally {
       setLoading(false);
     }
@@ -97,11 +117,12 @@ function SessionDetails({ session: initialSession, user, token, onBack }) {
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setSession(response.data.session);
-      setSuccess('Successfully joined the session!');
-      fetchSessionDetails();
+      setSuccess('Join request sent! Waiting for host approval.');
+      checkUserJoinRequest();
+      setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to join session');
+      setError(err.response?.data?.message || 'Failed to send join request');
+      setTimeout(() => setError(''), 3000);
     } finally {
       setLoading(false);
     }
@@ -120,8 +141,10 @@ function SessionDetails({ session: initialSession, user, token, onBack }) {
       );
       setSuccess('Checked in successfully!');
       fetchSessionDetails();
+      setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to check in');
+      setTimeout(() => setError(''), 3000);
     } finally {
       setLoading(false);
     }
@@ -145,6 +168,7 @@ function SessionDetails({ session: initialSession, user, token, onBack }) {
       }, 2000);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to cancel session');
+      setTimeout(() => setError(''), 3000);
     } finally {
       setLoading(false);
     }
@@ -163,8 +187,10 @@ function SessionDetails({ session: initialSession, user, token, onBack }) {
       );
       setSuccess('Participant removed successfully');
       fetchSessionDetails();
+      setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to remove participant');
+      setTimeout(() => setError(''), 3000);
     }
   };
 
@@ -201,7 +227,8 @@ function SessionDetails({ session: initialSession, user, token, onBack }) {
   const isCreator = session.creator_id === user.user_id;
   const isParticipant = session.participants.includes(user.user_id);
   const isFull = session.participants.length >= session.max_participants;
-  const canJoin = !isParticipant && !isFull && session.status === 'active';
+  const canJoin = !isParticipant && !isFull && session.status === 'active' && !userJoinRequest;
+  const hasPendingRequest = userJoinRequest && userJoinRequest.status === 'pending';
   const canCheckIn = isParticipant && session.status === 'active';
   
   const currentParticipant = participants.find(p => p.user_id === user.user_id);
@@ -216,16 +243,23 @@ function SessionDetails({ session: initialSession, user, token, onBack }) {
       {error && <div className="error-message">{error}</div>}
       {success && <div className="success-message">{success}</div>}
 
+      {session.status === 'pending_admin_approval' && (
+        <div className="info-message">
+          ⏳ This session is pending admin approval
+        </div>
+      )}
+
       <div className="session-details-content">
         <div className="session-main-info">
           <div className="session-title-section">
             <h1>{session.subject}</h1>
             <div className="status-badges">
               <span className={`status-badge status-${session.status}`}>
-                {session.status.replace('_', ' ').toUpperCase()}
+                {session.status.replace(/_/g, ' ').toUpperCase()}
               </span>
               {isCreator && <span className="creator-badge">YOU'RE THE HOST</span>}
               {isParticipant && !isCreator && <span className="participant-badge">JOINED</span>}
+              {hasPendingRequest && <span className="pending-badge">REQUEST PENDING</span>}
             </div>
           </div>
 
@@ -248,7 +282,9 @@ function SessionDetails({ session: initialSession, user, token, onBack }) {
               <div className="info-content">
                 <h4>Start Time</h4>
                 <p>{formatDateTime(session.start_time)}</p>
-                <p className="time-until">{getTimeUntilStart(session.start_time)}</p>
+                {session.status === 'active' && (
+                  <p className="time-until">{getTimeUntilStart(session.start_time)}</p>
+                )}
               </div>
             </div>
 
@@ -280,8 +316,14 @@ function SessionDetails({ session: initialSession, user, token, onBack }) {
                 className="join-btn"
                 disabled={loading}
               >
-                {loading ? 'Joining...' : 'Join This Session'}
+                {loading ? 'Sending Request...' : 'Request to Join'}
               </button>
+            )}
+
+            {hasPendingRequest && (
+              <div className="pending-request-badge">
+                ⏳ Your join request is pending host approval
+              </div>
             )}
 
             {canCheckIn && !isCheckedIn && (
@@ -346,6 +388,45 @@ function SessionDetails({ session: initialSession, user, token, onBack }) {
               ))
             )}
           </div>
+
+          {isCreator && joinRequests.length > 0 && (
+            <div className="join-requests-section">
+              <h3>Join Requests ({joinRequests.length})</h3>
+              <div className="requests-list">
+                {joinRequests.map(request => (
+                  <div key={request.request_id} className="request-item">
+                    <div className="request-info">
+                      <div className="request-avatar">👤</div>
+                      <div className="request-details">
+                        <p className="request-name">
+                          {request.user?.name || `User #${request.user_id}`}
+                        </p>
+                        <p className="request-meta">
+                          Requested {new Date(request.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="request-actions">
+                      <button
+                        onClick={() => handleApproveJoinRequest(request.request_id)}
+                        className="approve-btn"
+                        disabled={loading || isFull}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        onClick={() => handleRejectJoinRequest(request.request_id)}
+                        className="reject-btn"
+                        disabled={loading}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

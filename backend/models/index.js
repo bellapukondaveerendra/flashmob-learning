@@ -16,7 +16,7 @@ const userSchema = new mongoose.Schema({
   created_at: { type: Date, default: Date.now }
 });
 
-// Session Schema
+// Session Schema - UPDATED
 const sessionSchema = new mongoose.Schema({
   session_id: { type: String, required: true, unique: true },
   creator_id: { type: Number, required: true },
@@ -37,10 +37,28 @@ const sessionSchema = new mongoose.Schema({
   participants: [Number],
   status: { 
     type: String, 
-    enum: ['active', 'in_progress', 'completed', 'cancelled'],
-    default: 'active'
+    enum: ['pending_admin_approval', 'active', 'in_progress', 'completed', 'cancelled', 'rejected'],
+    default: 'pending_admin_approval'  // NEW DEFAULT
   },
+  admin_approved: { type: Boolean, default: false },  // NEW FIELD
+  admin_approved_by: { type: Number },  // NEW FIELD
+  admin_approved_at: { type: Date },  // NEW FIELD
   created_at: { type: Date, default: Date.now }
+});
+
+// Join Request Schema - NEW
+const joinRequestSchema = new mongoose.Schema({
+  request_id: { type: String, required: true, unique: true },
+  session_id: { type: String, required: true },
+  user_id: { type: Number, required: true },
+  status: {
+    type: String,
+    enum: ['pending', 'approved', 'rejected'],
+    default: 'pending'
+  },
+  created_at: { type: Date, default: Date.now },
+  reviewed_at: { type: Date },
+  reviewed_by: { type: Number }
 });
 
 // Venue Schema
@@ -161,8 +179,12 @@ const paymentSchema = new mongoose.Schema({
 // Create indexes for better query performance
 sessionSchema.index({ 'location.coordinates': '2dsphere' });
 sessionSchema.index({ start_time: 1, status: 1 });
+sessionSchema.index({ creator_id: 1 });
+sessionSchema.index({ status: 1 });
 venueSchema.index({ coordinates: '2dsphere' });
 participantSchema.index({ user_id: 1, session_id: 1 });
+joinRequestSchema.index({ session_id: 1, status: 1 });
+joinRequestSchema.index({ user_id: 1 });
 
 // Export models
 module.exports = {
@@ -176,5 +198,6 @@ module.exports = {
   Section: mongoose.model('Section', sectionSchema),
   Location: mongoose.model('Location', locationSchema),
   Enrollment: mongoose.model('Enrollment', enrollmentSchema),
-  Payment: mongoose.model('Payment', paymentSchema)
+  Payment: mongoose.model('Payment', paymentSchema),
+  JoinRequest: mongoose.model('JoinRequest', joinRequestSchema)  // NEW MODEL
 };

@@ -39,6 +39,15 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
+// Admin Middleware - NEW
+const authenticateAdmin = async (req, res, next) => {
+  const user = await models.User.findOne({ user_id: req.user.user_id });
+  if (!user || !user.is_admin) {
+    return res.status(403).json({ message: 'Admin access required' });
+  }
+  next();
+};
+
 // Helper function to generate session ID
 const generateSessionId = async () => {
   const count = await models.Session.countDocuments();
@@ -49,6 +58,12 @@ const generateSessionId = async () => {
 const generateUserId = async () => {
   const lastUser = await models.User.findOne().sort({ user_id: -1 });
   return lastUser ? lastUser.user_id + 1 : 101;
+};
+
+// Helper function to generate join request ID
+const generateJoinRequestId = async () => {
+  const count = await models.JoinRequest.countDocuments();
+  return `JR${new Date().getFullYear()}${String(count + 1).padStart(5, '0')}`;
 };
 
 // ==================== AUTH ROUTES ====================
@@ -71,6 +86,7 @@ app.post('/api/auth/register', async (req, res) => {
       email,
       password: hashedPassword,
       name,
+      is_admin: false,
       preferences: preferences || { subjects: [], max_distance: 5, favorite_venues: [] }
     });
 
@@ -81,14 +97,20 @@ app.post('/api/auth/register', async (req, res) => {
     res.status(201).json({
       message: 'User registered successfully',
       token,
-      user: { user_id, email, name, preferences: newUser.preferences }
+      user: { 
+        user_id, 
+        email, 
+        name, 
+        is_admin: false,
+        preferences: newUser.preferences 
+      }
     });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
-// Login
+// Login - UPDATED to return is_admin flag
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -112,6 +134,7 @@ app.post('/api/auth/login', async (req, res) => {
         user_id: user.user_id,
         email: user.email,
         name: user.name,
+        is_admin: user.is_admin,  // IMPORTANT: Return admin flag
         preferences: user.preferences,
         active_sessions: user.active_sessions
       }
@@ -123,7 +146,7 @@ app.post('/api/auth/login', async (req, res) => {
 
 // ==================== SESSION ROUTES ====================
 
-// Create Session
+// Create Session - UPDATED to set pending_admin_approval status
 app.post('/api/sessions', authenticateToken, async (req, res) => {
   try {
     const { subject, topic, location, start_time, duration, max_participants } = req.body;
@@ -140,7 +163,8 @@ app.post('/api/sessions', authenticateToken, async (req, res) => {
       duration,
       max_participants,
       participants: [req.user.user_id],
-      status: 'active'
+      status: 'pending_admin_approval',  // NEW: Wait for admin approval
+      admin_approved: false
     });
 
     await newSession.save();
@@ -161,29 +185,40 @@ app.post('/api/sessions', authenticateToken, async (req, res) => {
       { $push: { active_sessions: session_id } }
     );
 
-    res.status(201).json({ message: 'Session created successfully', session: newSession });
+    res.status(201).json({ 
+      message: 'Session created successfully. Waiting for admin approval.', 
+      session: newSession 
+    });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
-// Get All Sessions
+// Get All Sessions - UPDATED to only show active sessions to non-admins
 app.get('/api/sessions/all', authenticateToken, async (req, res) => {
   try {
-    const sessions = await models.Session.find().sort({ start_time: 1 });
+    const user = await models.User.findOne({ user_id: req.user.user_id });
+    
+    let query = {};
+    // Non-admins only see active, in_progress, or completed sessions
+    if (!user.is_admin) {
+      query.status = { $in: ['active', 'in_progress', 'completed'] };
+    }
+    
+    const sessions = await models.Session.find(query).sort({ start_time: 1 });
     res.json({ sessions });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
-// Get Nearby Sessions
+// Get Nearby Sessions - UPDATED to only show active sessions
 app.get('/api/sessions/nearby', authenticateToken, async (req, res) => {
   try {
     const { lat, lng, maxDistance = 5000, subject } = req.query;
 
     const query = {
-      status: 'active',
+      status: 'active',  // Only active sessions
       start_time: { $gte: new Date() },
       'location.coordinates': {
         $near: {
@@ -225,13 +260,17 @@ app.get('/api/sessions/:session_id', authenticateToken, async (req, res) => {
   }
 });
 
-// Join Session
+// Join Session - UPDATED to create join request instead of immediate join
 app.post('/api/sessions/:session_id/join', authenticateToken, async (req, res) => {
   try {
     const session = await models.Session.findOne({ session_id: req.params.session_id });
 
     if (!session) {
       return res.status(404).json({ message: 'Session not found' });
+    }
+
+    if (session.status !== 'active') {
+      return res.status(400).json({ message: 'Session is not active' });
     }
 
     if (session.participants.length >= session.max_participants) {
@@ -242,24 +281,168 @@ app.post('/api/sessions/:session_id/join', authenticateToken, async (req, res) =
       return res.status(400).json({ message: 'Already joined this session' });
     }
 
-    session.participants.push(req.user.user_id);
+    // Check if already has a pending request
+    const existingRequest = await models.JoinRequest.findOne({
+      session_id: req.params.session_id,
+      user_id: req.user.user_id,
+      status: 'pending'
+    });
+
+    if (existingRequest) {
+      return res.status(400).json({ message: 'Join request already pending' });
+    }
+
+    // Create join request instead of joining directly
+    const request_id = await generateJoinRequestId();
+    const joinRequest = new models.JoinRequest({
+      request_id,
+      session_id: req.params.session_id,
+      user_id: req.user.user_id,
+      status: 'pending'
+    });
+
+    await joinRequest.save();
+
+    res.json({ 
+      message: 'Join request sent. Waiting for session creator approval.', 
+      joinRequest 
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Get Pending Join Requests for a Session - NEW
+app.get('/api/sessions/:session_id/join-requests', authenticateToken, async (req, res) => {
+  try {
+    const session = await models.Session.findOne({ session_id: req.params.session_id });
+    
+    if (!session) {
+      return res.status(404).json({ message: 'Session not found' });
+    }
+
+    // Only session creator can see join requests
+    if (session.creator_id !== req.user.user_id) {
+      return res.status(403).json({ message: 'Only session creator can view join requests' });
+    }
+
+    const requests = await models.JoinRequest.find({
+      session_id: req.params.session_id,
+      status: 'pending'
+    });
+
+    // Get user details for each request
+    const requestsWithUserDetails = await Promise.all(
+      requests.map(async (request) => {
+        const user = await models.User.findOne({ user_id: request.user_id }).select('-password');
+        return {
+          ...request.toObject(),
+          user: user ? { user_id: user.user_id, name: user.name, email: user.email } : null
+        };
+      })
+    );
+
+    res.json({ requests: requestsWithUserDetails });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Approve Join Request - NEW
+app.post('/api/sessions/:session_id/approve-join/:request_id', authenticateToken, async (req, res) => {
+  try {
+    const session = await models.Session.findOne({ session_id: req.params.session_id });
+    
+    if (!session) {
+      return res.status(404).json({ message: 'Session not found' });
+    }
+
+    // Only session creator can approve
+    if (session.creator_id !== req.user.user_id) {
+      return res.status(403).json({ message: 'Only session creator can approve join requests' });
+    }
+
+    const joinRequest = await models.JoinRequest.findOne({ 
+      request_id: req.params.request_id 
+    });
+
+    if (!joinRequest) {
+      return res.status(404).json({ message: 'Join request not found' });
+    }
+
+    if (joinRequest.status !== 'pending') {
+      return res.status(400).json({ message: 'Request already processed' });
+    }
+
+    // Check if session is full
+    if (session.participants.length >= session.max_participants) {
+      return res.status(400).json({ message: 'Session is full' });
+    }
+
+    // Approve the request
+    joinRequest.status = 'approved';
+    joinRequest.reviewed_at = new Date();
+    joinRequest.reviewed_by = req.user.user_id;
+    await joinRequest.save();
+
+    // Add user to session
+    session.participants.push(joinRequest.user_id);
     await session.save();
 
+    // Create participant entry
     const participant = new models.Participant({
-      user_id: req.user.user_id,
+      user_id: joinRequest.user_id,
       session_id: req.params.session_id,
       role: 'participant',
       is_session_admin: false
     });
-
     await participant.save();
 
+    // Update user's active sessions
     await models.User.findOneAndUpdate(
-      { user_id: req.user.user_id },
+      { user_id: joinRequest.user_id },
       { $push: { active_sessions: req.params.session_id } }
     );
 
-    res.json({ message: 'Successfully joined session', session });
+    res.json({ message: 'Join request approved successfully', session });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Reject Join Request - NEW
+app.post('/api/sessions/:session_id/reject-join/:request_id', authenticateToken, async (req, res) => {
+  try {
+    const session = await models.Session.findOne({ session_id: req.params.session_id });
+    
+    if (!session) {
+      return res.status(404).json({ message: 'Session not found' });
+    }
+
+    // Only session creator can reject
+    if (session.creator_id !== req.user.user_id) {
+      return res.status(403).json({ message: 'Only session creator can reject join requests' });
+    }
+
+    const joinRequest = await models.JoinRequest.findOne({ 
+      request_id: req.params.request_id 
+    });
+
+    if (!joinRequest) {
+      return res.status(404).json({ message: 'Join request not found' });
+    }
+
+    if (joinRequest.status !== 'pending') {
+      return res.status(400).json({ message: 'Request already processed' });
+    }
+
+    // Reject the request
+    joinRequest.status = 'rejected';
+    joinRequest.reviewed_at = new Date();
+    joinRequest.reviewed_by = req.user.user_id;
+    await joinRequest.save();
+
+    res.json({ message: 'Join request rejected' });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -646,7 +829,7 @@ app.get('/api/instructors/:instructor_id', authenticateToken, async (req, res) =
 // ==================== PLATFORM ADMIN ROUTES ====================
 
 // Get All Users (Admin only)
-app.get('/api/admin/users', authenticateToken, async (req, res) => {
+app.get('/api/admin/users', authenticateToken, authenticateAdmin, async (req, res) => {
   try {
     const users = await models.User.find().select('-password');
     res.json({ users });
@@ -656,7 +839,7 @@ app.get('/api/admin/users', authenticateToken, async (req, res) => {
 });
 
 // Suspend User (Admin only)
-app.post('/api/admin/users/:user_id/suspend', authenticateToken, async (req, res) => {
+app.post('/api/admin/users/:user_id/suspend', authenticateToken, authenticateAdmin, async (req, res) => {
   try {
     const user = await models.User.findOneAndUpdate(
       { user_id: parseInt(req.params.user_id) },
@@ -674,8 +857,88 @@ app.post('/api/admin/users/:user_id/suspend', authenticateToken, async (req, res
   }
 });
 
+// Get Pending Sessions (Admin only) - NEW
+app.get('/api/admin/sessions/pending', authenticateToken, authenticateAdmin, async (req, res) => {
+  try {
+    const pendingSessions = await models.Session.find({ 
+      status: 'pending_admin_approval' 
+    }).sort({ created_at: -1 });
+
+    // Get creator details for each session
+    const sessionsWithCreator = await Promise.all(
+      pendingSessions.map(async (session) => {
+        const creator = await models.User.findOne({ user_id: session.creator_id }).select('-password');
+        return {
+          ...session.toObject(),
+          creator: creator ? { user_id: creator.user_id, name: creator.name, email: creator.email } : null
+        };
+      })
+    );
+
+    res.json({ sessions: sessionsWithCreator });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Approve Session (Admin only) - NEW
+app.post('/api/admin/sessions/:session_id/approve', authenticateToken, authenticateAdmin, async (req, res) => {
+  try {
+    const session = await models.Session.findOne({ session_id: req.params.session_id });
+
+    if (!session) {
+      return res.status(404).json({ message: 'Session not found' });
+    }
+
+    if (session.status !== 'pending_admin_approval') {
+      return res.status(400).json({ message: 'Session is not pending approval' });
+    }
+
+    session.status = 'active';
+    session.admin_approved = true;
+    session.admin_approved_by = req.user.user_id;
+    session.admin_approved_at = new Date();
+    await session.save();
+
+    res.json({ message: 'Session approved successfully', session });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Reject Session (Admin only) - NEW
+app.post('/api/admin/sessions/:session_id/reject', authenticateToken, authenticateAdmin, async (req, res) => {
+  try {
+    const session = await models.Session.findOne({ session_id: req.params.session_id });
+
+    if (!session) {
+      return res.status(404).json({ message: 'Session not found' });
+    }
+
+    if (session.status !== 'pending_admin_approval') {
+      return res.status(400).json({ message: 'Session is not pending approval' });
+    }
+
+    session.status = 'rejected';
+    session.admin_approved = false;
+    session.admin_approved_by = req.user.user_id;
+    session.admin_approved_at = new Date();
+    await session.save();
+
+    // Remove from creator's active sessions
+    await models.User.findOneAndUpdate(
+      { user_id: session.creator_id },
+      { $pull: { active_sessions: session.session_id } }
+    );
+
+    res.json({ message: 'Session rejected', session });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // Delete Any Session (Admin only)
-app.delete('/api/admin/sessions/:session_id', authenticateToken, async (req, res) => {
+app.delete('/api/admin/sessions/:session_id', authenticateToken, authenticateAdmin, async (req, res) => {
   try {
     const session = await models.Session.findOneAndDelete({ 
       session_id: req.params.session_id 
@@ -693,13 +956,14 @@ app.delete('/api/admin/sessions/:session_id', authenticateToken, async (req, res
   }
 });
 
-// Get Platform Statistics (Admin only)
-app.get('/api/admin/stats', authenticateToken, async (req, res) => {
+// Get Platform Statistics (Admin only) - UPDATED
+app.get('/api/admin/stats', authenticateToken, authenticateAdmin, async (req, res) => {
   try {
     const stats = {
       totalUsers: await models.User.countDocuments(),
       totalSessions: await models.Session.countDocuments(),
       activeSessions: await models.Session.countDocuments({ status: 'active' }),
+      pendingSessions: await models.Session.countDocuments({ status: 'pending_admin_approval' }),
       totalVenues: await models.Venue.countDocuments(),
       totalCourses: await models.Course.countDocuments(),
       totalEnrollments: await models.Enrollment.countDocuments()

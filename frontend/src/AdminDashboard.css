@@ -35,6 +35,7 @@
   font-size: 1rem;
   cursor: pointer;
   transition: all 0.3s ease;
+  position: relative;
 }
 
 .tab-btn:hover {
@@ -45,6 +46,18 @@
 .tab-btn.active {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
+}
+
+.tab-btn .badge {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  background: #ff9800;
+  color: white;
+  border-radius: 12px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
 }
 
 .admin-content {
@@ -114,6 +127,127 @@
   color: #666;
   margin-top: 0.5rem;
   font-weight: 500;
+}
+
+/* Pending Sessions Styles */
+.pending-sessions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.pending-session-card {
+  background: #fff8e1;
+  border: 2px solid #ff9800;
+  border-radius: 12px;
+  padding: 1.5rem;
+  transition: all 0.3s ease;
+}
+
+.pending-session-card:hover {
+  box-shadow: 0 6px 20px rgba(255, 152, 0, 0.2);
+  transform: translateY(-2px);
+}
+
+.session-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  margin-bottom: 1rem;
+  gap: 1rem;
+}
+
+.session-main-info h4 {
+  font-size: 1.3rem;
+  color: #333;
+  margin: 0 0 0.5rem 0;
+}
+
+.session-topic {
+  color: #555;
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.pending-badge {
+  background: #ff9800;
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.session-details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 8px;
+}
+
+.detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.detail-label {
+  font-size: 0.8rem;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.detail-value {
+  font-size: 0.95rem;
+  color: #333;
+  font-weight: 500;
+}
+
+.session-actions {
+  display: flex;
+  gap: 1rem;
+  padding-top: 1rem;
+  border-top: 2px solid rgba(255, 152, 0, 0.3);
+}
+
+.approve-btn,
+.reject-btn {
+  flex: 1;
+  padding: 0.8rem 1.5rem;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.approve-btn {
+  background: #4caf50;
+  color: white;
+}
+
+.approve-btn:hover {
+  background: #45a049;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.4);
+}
+
+.reject-btn {
+  background: #f44336;
+  color: white;
+}
+
+.reject-btn:hover {
+  background: #da190b;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(244, 67, 54, 0.4);
 }
 
 .admin-table {
@@ -219,6 +353,16 @@
   color: #c62828;
 }
 
+.status-pending_admin_approval {
+  background: #fff3e0;
+  color: #ff9800;
+}
+
+.status-rejected {
+  background: #ffebee;
+  color: #c62828;
+}
+
 @media (max-width: 1024px) {
   .admin-dashboard-header h2 {
     font-size: 1.6rem;
@@ -252,6 +396,14 @@
 
   .stats-grid {
     grid-template-columns: 1fr;
+  }
+
+  .session-details-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .session-actions {
+    flex-direction: column;
   }
 
   .admin-table {

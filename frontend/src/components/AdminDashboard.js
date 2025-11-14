@@ -8,6 +8,7 @@ function AdminDashboard({ user, token, onBack }) {
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
   const [sessions, setSessions] = useState([]);
+  const [pendingSessions, setPendingSessions] = useState([]);
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -17,6 +18,7 @@ function AdminDashboard({ user, token, onBack }) {
     fetchStats();
     if (activeTab === 'users') fetchUsers();
     if (activeTab === 'sessions') fetchSessions();
+    if (activeTab === 'pending') fetchPendingSessions();
   }, [activeTab]);
 
   const fetchStats = async () => {
@@ -61,6 +63,63 @@ function AdminDashboard({ user, token, onBack }) {
     }
   };
 
+  const fetchPendingSessions = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.get(`${API_URL}/admin/sessions/pending`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setPendingSessions(response.data.sessions);
+    } catch (err) {
+      setError('Failed to load pending sessions');
+      console.error('Error fetching pending sessions:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleApproveSession = async (sessionId) => {
+    if (!window.confirm('Are you sure you want to approve this session?')) {
+      return;
+    }
+
+    try {
+      await axios.post(
+        `${API_URL}/admin/sessions/${sessionId}/approve`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setSuccess('Session approved successfully');
+      fetchPendingSessions();
+      fetchStats();
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to approve session');
+      setTimeout(() => setError(''), 3000);
+    }
+  };
+
+  const handleRejectSession = async (sessionId) => {
+    if (!window.confirm('Are you sure you want to reject this session?')) {
+      return;
+    }
+
+    try {
+      await axios.post(
+        `${API_URL}/admin/sessions/${sessionId}/reject`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setSuccess('Session rejected');
+      fetchPendingSessions();
+      fetchStats();
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to reject session');
+      setTimeout(() => setError(''), 3000);
+    }
+  };
+
   const handleSuspendUser = async (userId) => {
     if (!window.confirm('Are you sure you want to suspend this user?')) {
       return;
@@ -74,8 +133,10 @@ function AdminDashboard({ user, token, onBack }) {
       );
       setSuccess('User suspended successfully');
       fetchUsers();
+      setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to suspend user');
+      setTimeout(() => setError(''), 3000);
     }
   };
 
@@ -90,8 +151,10 @@ function AdminDashboard({ user, token, onBack }) {
       });
       setSuccess('Session deleted successfully');
       fetchSessions();
+      setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to delete session');
+      setTimeout(() => setError(''), 3000);
     }
   };
 
@@ -122,6 +185,15 @@ function AdminDashboard({ user, token, onBack }) {
           onClick={() => setActiveTab('overview')}
         >
           📊 Overview
+        </button>
+        <button
+          className={`tab-btn ${activeTab === 'pending' ? 'active' : ''}`}
+          onClick={() => setActiveTab('pending')}
+        >
+          ⏳ Pending Approvals
+          {stats && stats.pendingSessions > 0 && (
+            <span className="badge">{stats.pendingSessions}</span>
+          )}
         </button>
         <button
           className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`}
@@ -164,6 +236,13 @@ function AdminDashboard({ user, token, onBack }) {
                     <div className="stat-label">Active Sessions</div>
                   </div>
                 </div>
+                <div className="stat-card" style={{ borderColor: stats.pendingSessions > 0 ? '#ff9800' : 'transparent' }}>
+                  <div className="stat-icon">⏳</div>
+                  <div className="stat-info">
+                    <div className="stat-value">{stats.pendingSessions}</div>
+                    <div className="stat-label">Pending Approval</div>
+                  </div>
+                </div>
                 <div className="stat-card">
                   <div className="stat-icon">📍</div>
                   <div className="stat-info">
@@ -178,16 +257,80 @@ function AdminDashboard({ user, token, onBack }) {
                     <div className="stat-label">Courses</div>
                   </div>
                 </div>
-                <div className="stat-card">
-                  <div className="stat-icon">📝</div>
-                  <div className="stat-info">
-                    <div className="stat-value">{stats.totalEnrollments}</div>
-                    <div className="stat-label">Enrollments</div>
-                  </div>
-                </div>
               </div>
             ) : (
               <div className="loading">Loading statistics...</div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'pending' && (
+          <div className="pending-tab">
+            <h3>Session Approval Requests</h3>
+            {loading ? (
+              <div className="loading">Loading pending sessions...</div>
+            ) : pendingSessions.length === 0 ? (
+              <div className="empty-state">
+                <p>No pending session approval requests</p>
+              </div>
+            ) : (
+              <div className="pending-sessions-list">
+                {pendingSessions.map(session => (
+                  <div key={session.session_id} className="pending-session-card">
+                    <div className="session-header">
+                      <div className="session-main-info">
+                        <h4>{session.subject}</h4>
+                        <p className="session-topic">{session.topic}</p>
+                      </div>
+                      <span className="pending-badge">Pending Approval</span>
+                    </div>
+                    
+                    <div className="session-details-grid">
+                      <div className="detail-item">
+                        <span className="detail-label">Created by:</span>
+                        <span className="detail-value">
+                          {session.creator?.name || `User #${session.creator_id}`}
+                        </span>
+                      </div>
+                      <div className="detail-item">
+                        <span className="detail-label">Location:</span>
+                        <span className="detail-value">{session.location.venue_name}</span>
+                      </div>
+                      <div className="detail-item">
+                        <span className="detail-label">Start Time:</span>
+                        <span className="detail-value">{formatDateTime(session.start_time)}</span>
+                      </div>
+                      <div className="detail-item">
+                        <span className="detail-label">Duration:</span>
+                        <span className="detail-value">{session.duration} minutes</span>
+                      </div>
+                      <div className="detail-item">
+                        <span className="detail-label">Max Participants:</span>
+                        <span className="detail-value">{session.max_participants}</span>
+                      </div>
+                      <div className="detail-item">
+                        <span className="detail-label">Requested:</span>
+                        <span className="detail-value">{formatDateTime(session.created_at)}</span>
+                      </div>
+                    </div>
+
+                    <div className="session-actions">
+                      <button
+                        onClick={() => handleApproveSession(session.session_id)}
+                        className="approve-btn"
+                      >
+                        ✓ Approve Session
+                      </button>
+                      <button
+                        onClick={() => handleRejectSession(session.session_id)}
+                        className="reject-btn"
+                      >
+                        ✗ Reject Session
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         )}

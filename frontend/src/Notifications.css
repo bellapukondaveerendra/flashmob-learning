@@ -1,0 +1,249 @@
+.notifications-container {
+  position: relative;
+}
+
+.notification-bell {
+  position: relative;
+  background: transparent;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0.5rem;
+  transition: all 0.3s ease;
+}
+
+.notification-bell:hover {
+  transform: scale(1.1);
+}
+
+.notification-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: #f44336;
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.2rem 0.4rem;
+  border-radius: 10px;
+  min-width: 18px;
+  text-align: center;
+}
+
+.notifications-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 0.5rem;
+  width: 400px;
+  max-height: 600px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.notifications-header {
+  padding: 1.5rem;
+  border-bottom: 2px solid #f0f0f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.notifications-header h3 {
+  font-size: 1.3rem;
+  color: #333;
+  margin: 0;
+}
+
+.header-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.mark-all-btn,
+.clear-all-btn {
+  padding: 0.4rem 0.8rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.mark-all-btn {
+  background: rgba(102, 126, 234, 0.1);
+  color: #667eea;
+}
+
+.mark-all-btn:hover {
+  background: rgba(102, 126, 234, 0.2);
+}
+
+.clear-all-btn {
+  background: rgba(244, 67, 54, 0.1);
+  color: #f44336;
+}
+
+.clear-all-btn:hover {
+  background: rgba(244, 67, 54, 0.2);
+}
+
+.notifications-list {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.notifications-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.notifications-list::-webkit-scrollbar-track {
+  background: #f0f0f0;
+}
+
+.notifications-list::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
+}
+
+.notifications-list::-webkit-scrollbar-thumb:hover {
+  background: #999;
+}
+
+.notification-item {
+  display: flex;
+  align-items: start;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.notification-item:hover {
+  background: rgba(102, 126, 234, 0.05);
+}
+
+.notification-item.unread {
+  background: rgba(102, 126, 234, 0.08);
+}
+
+.notification-icon {
+  font-size: 2rem;
+  flex-shrink: 0;
+}
+
+.notification-content {
+  flex: 1;
+}
+
+.notification-content h4 {
+  font-size: 1rem;
+  color: #333;
+  margin: 0 0 0.3rem 0;
+  font-weight: 600;
+}
+
+.notification-content p {
+  font-size: 0.9rem;
+  color: #666;
+  margin: 0 0 0.5rem 0;
+  line-height: 1.4;
+}
+
+.notification-time {
+  font-size: 0.8rem;
+  color: #999;
+}
+
+.delete-notification {
+  background: transparent;
+  border: none;
+  color: #999;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+}
+
+.delete-notification:hover {
+  background: rgba(244, 67, 54, 0.1);
+  color: #f44336;
+}
+
+.no-notifications {
+  padding: 3rem 2rem;
+  text-align: center;
+  color: #666;
+}
+
+.no-notif-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+}
+
+.no-notifications p {
+  margin-bottom: 1.5rem;
+  font-size: 1.1rem;
+}
+
+.enable-notif-btn {
+  padding: 0.8rem 1.5rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.enable-notif-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+@media (max-width: 768px) {
+  .notifications-dropdown {
+    width: 100vw;
+    max-width: 400px;
+    right: -50px;
+  }
+
+  .notification-item {
+    padding: 1rem;
+  }
+
+  .notifications-header {
+    padding: 1rem;
+  }
+
+  .header-actions {
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+}

@@ -2,7 +2,7 @@
 
 A location-based platform that enables students to create and discover immediate study opportunities. Find nearby peers who want to study the same topic right now!
 
-## 🚀 Features
+## 🚀 Featuressssss
 
 - **Location-based Session Discovery**: Find study sessions near you using GPS
 - **Instant Session Creation**: Create study sessions starting in 15-60 minutes

@@ -4,12 +4,6 @@ import '../CreateSession.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
-const SUBJECTS = [
-  'Mathematics', 'Physics', 'Chemistry', 'Biology',
-  'Computer Science', 'Engineering', 'Literature', 'History',
-  'Economics', 'Psychology', 'Languages', 'Art'
-];
-
 function CreateSession({ user, token, onBack }) {
   const [venues, setVenues] = useState([]);
   const [formData, setFormData] = useState({
@@ -26,6 +20,9 @@ function CreateSession({ user, token, onBack }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+
+  // Get user's subjects from preferences
+  const userSubjects = user?.preferences?.subjects || [];
 
   useEffect(() => {
     fetchVenues();
@@ -81,88 +78,86 @@ function CreateSession({ user, token, onBack }) {
     }
   };
 
-const getMinStartTime = () => {
-  const now = new Date();
-  now.setMinutes(now.getMinutes() + 15);
-  // Format: YYYY-MM-DDTHH:MM
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const hours = String(now.getHours()).padStart(2, '0');
-  const minutes = String(now.getMinutes()).padStart(2, '0');
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
-};
-
-const getMaxStartTime = () => {
-  const now = new Date();
-  now.setMinutes(now.getMinutes() + 60);
-  // Format: YYYY-MM-DDTHH:MM
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const hours = String(now.getHours()).padStart(2, '0');
-  const minutes = String(now.getMinutes()).padStart(2, '0');
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
-};
-
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  setError('');
-  setLoading(true);
-
-  if (!formData.subject || !formData.topic || !formData.venue_id) {
-    setError('Please fill in all required fields');
-    setLoading(false);
-    return;
-  }
-
-  // Validate start time
-  const now = new Date();
-  const selectedTime = new Date(formData.start_time);
-  const diffMinutes = (selectedTime - now) / 60000;
-
-  if (diffMinutes < 15) {
-    setError('Session must start at least 15 minutes from now');
-    setLoading(false);
-    return;
-  }
-
-  if (diffMinutes > 60) {
-    setError('Session must start within 60 minutes from now');
-    setLoading(false);
-    return;
-  }
-
-  const selectedVenue = venues.find(v => v.venue_id === formData.venue_id);
-
-  const sessionData = {
-    subject: formData.subject,
-    topic: formData.topic,
-    location: {
-      venue_id: formData.venue_id,
-      venue_name: formData.venue_name,
-      coordinates: selectedVenue ? selectedVenue.coordinates : { lat: 0, lng: 0 },
-      meeting_spot: formData.meeting_spot
-    },
-    start_time: new Date(formData.start_time).toISOString(),
-    duration: parseInt(formData.duration),
-    max_participants: parseInt(formData.max_participants)
+  const getMinStartTime = () => {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() + 15);
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
   };
 
-  try {
-    await axios.post(`${API_URL}/sessions`, sessionData, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    setSuccess(true);
-    setTimeout(() => {
-      onBack();
-    }, 2000);
-  } catch (err) {
-    setError(err.response?.data?.message || 'Failed to create session');
-  } finally {
-    setLoading(false);
-  }
-};
+  const getMaxStartTime = () => {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() + 60);
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    if (!formData.subject || !formData.topic || !formData.venue_id) {
+      setError('Please fill in all required fields');
+      setLoading(false);
+      return;
+    }
+
+    // Validate start time
+    const now = new Date();
+    const selectedTime = new Date(formData.start_time);
+    const diffMinutes = (selectedTime - now) / 60000;
+
+    if (diffMinutes < 15) {
+      setError('Session must start at least 15 minutes from now');
+      setLoading(false);
+      return;
+    }
+
+    if (diffMinutes > 60) {
+      setError('Session must start within 60 minutes from now');
+      setLoading(false);
+      return;
+    }
+
+    const selectedVenue = venues.find(v => v.venue_id === formData.venue_id);
+
+    const sessionData = {
+      subject: formData.subject,
+      topic: formData.topic,
+      location: {
+        venue_id: formData.venue_id,
+        venue_name: formData.venue_name,
+        coordinates: selectedVenue ? selectedVenue.coordinates : { lat: 0, lng: 0 },
+        meeting_spot: formData.meeting_spot
+      },
+      start_time: new Date(formData.start_time).toISOString(),
+      duration: parseInt(formData.duration),
+      max_participants: parseInt(formData.max_participants)
+    };
+
+    try {
+      await axios.post(`${API_URL}/sessions`, sessionData, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setSuccess(true);
+      setTimeout(() => {
+        onBack();
+      }, 2000);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to create session');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (success) {
     return (
@@ -170,7 +165,23 @@ const handleSubmit = async (e) => {
         <div className="success-message">
           <div className="success-icon">✅</div>
           <h2>Session Created Successfully!</h2>
-          <p>Redirecting you back to dashboard...</p>
+          <p>Your session is pending admin approval. You'll be notified once it's approved.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Check if user has selected subjects
+  if (userSubjects.length === 0) {
+    return (
+      <div className="create-session-container">
+        <div className="create-session-header">
+          <button onClick={onBack} className="back-btn">← Back</button>
+          <h2>Create Study Session</h2>
+        </div>
+        <div className="error-message" style={{ marginTop: '2rem' }}>
+          <p>You need to select your subjects of interest before creating a session.</p>
+          <p>Please go to your Profile and select at least one subject.</p>
         </div>
       </div>
     );
@@ -197,10 +208,11 @@ const handleSubmit = async (e) => {
               required
             >
               <option value="">Select a subject</option>
-              {SUBJECTS.map(subject => (
+              {userSubjects.map(subject => (
                 <option key={subject} value={subject}>{subject}</option>
               ))}
             </select>
+            <small>Only showing subjects from your interests</small>
           </div>
 
           <div className="form-group">

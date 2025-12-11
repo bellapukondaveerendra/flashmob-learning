@@ -84,7 +84,7 @@ const generateJoinRequestId = async () => {
 // Register
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { email, password, name, preferences } = req.body;
+    const { email, phone, password, name, preferences } = req.body;
 
     const existingUser = await models.User.findOne({ email });
     if (existingUser) {
@@ -97,10 +97,11 @@ app.post('/api/auth/register', async (req, res) => {
     const newUser = new models.User({
       user_id,
       email,
+      phone,
       password: hashedPassword,
       name,
       is_admin: false,
-      preferences: preferences || { subjects: [], max_distance: 5, favorite_venues: [] }
+      preferences: preferences || { subjects: [], favorite_venues: [] }
     });
 
     await newUser.save();
@@ -112,7 +113,8 @@ app.post('/api/auth/register', async (req, res) => {
       token,
       user: { 
         user_id, 
-        email, 
+        email,
+        phone,
         name, 
         is_admin: false,
         preferences: newUser.preferences 
@@ -621,14 +623,13 @@ app.get('/api/users/me', authenticateToken, async (req, res) => {
 // Update User Preferences
 app.put('/api/users/preferences', authenticateToken, async (req, res) => {
   try {
-    const { subjects, max_distance, favorite_venues } = req.body;
+    const { subjects, favorite_venues } = req.body;
 
     const user = await models.User.findOneAndUpdate(
       { user_id: req.user.user_id },
       { 
         preferences: {
           subjects: subjects || [],
-          max_distance: max_distance || 5,
           favorite_venues: favorite_venues || []
         }
       },

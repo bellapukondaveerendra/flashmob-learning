@@ -1,22 +1,22 @@
 const mongoose = require('mongoose');
 
-// User Schema
+// User Schema - UPDATED: Added phone, removed max_distance
 const userSchema = new mongoose.Schema({
   user_id: { type: Number, required: true, unique: true },
   email: { type: String, required: true, unique: true },
+  phone: { type: String, required: true },
   password: { type: String, required: true },
   name: { type: String, required: true },
   is_admin: { type: Boolean, default: false },
   preferences: {
     subjects: [String],
-    max_distance: { type: Number, default: 5 },
     favorite_venues: [String]
   },
   active_sessions: [String],
   created_at: { type: Date, default: Date.now }
 });
 
-// Session Schema - UPDATED
+// Session Schema
 const sessionSchema = new mongoose.Schema({
   session_id: { type: String, required: true, unique: true },
   creator_id: { type: Number, required: true },
@@ -38,15 +38,15 @@ const sessionSchema = new mongoose.Schema({
   status: { 
     type: String, 
     enum: ['pending_admin_approval', 'active', 'in_progress', 'completed', 'cancelled', 'rejected'],
-    default: 'pending_admin_approval'  // NEW DEFAULT
+    default: 'pending_admin_approval'
   },
-  admin_approved: { type: Boolean, default: false },  // NEW FIELD
-  admin_approved_by: { type: Number },  // NEW FIELD
-  admin_approved_at: { type: Date },  // NEW FIELD
+  admin_approved: { type: Boolean, default: false },
+  admin_approved_by: { type: Number },
+  admin_approved_at: { type: Date },
   created_at: { type: Date, default: Date.now }
 });
 
-// Join Request Schema - NEW
+// Join Request Schema
 const joinRequestSchema = new mongoose.Schema({
   request_id: { type: String, required: true, unique: true },
   session_id: { type: String, required: true },
@@ -199,5 +199,5 @@ module.exports = {
   Location: mongoose.model('Location', locationSchema),
   Enrollment: mongoose.model('Enrollment', enrollmentSchema),
   Payment: mongoose.model('Payment', paymentSchema),
-  JoinRequest: mongoose.model('JoinRequest', joinRequestSchema)  // NEW MODEL
+  JoinRequest: mongoose.model('JoinRequest', joinRequestSchema)
 };

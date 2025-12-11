@@ -23,6 +23,9 @@ async function createAdminAccount() {
       const hashedPassword = await bcrypt.hash('Admin@123', 10);
       existingAdmin.password = hashedPassword;
       existingAdmin.is_admin = true;
+      if (!existingAdmin.phone) {
+        existingAdmin.phone = '+10000000000';
+      }
       await existingAdmin.save();
       
       console.log('✅ Admin password updated to: Admin@123');
@@ -37,12 +40,12 @@ async function createAdminAccount() {
       const adminUser = new models.User({
         user_id,
         email: 'admin@gmail.com',
+        phone: '+10000000000',
         password: hashedPassword,
         name: 'Platform Administrator',
         is_admin: true,
         preferences: {
           subjects: [],
-          max_distance: 5,
           favorite_venues: []
         }
       });
@@ -53,6 +56,7 @@ async function createAdminAccount() {
       console.log('\n📧 Admin Credentials:');
       console.log('   Email: admin@gmail.com');
       console.log('   Password: Admin@123');
+      console.log('   Phone: +1 000-000-0000');
       console.log('\n⚠️  Please change the password after first login!');
     }
 

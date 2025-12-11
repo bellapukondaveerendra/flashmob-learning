@@ -15,7 +15,6 @@ function UserProfile({ user, token, onBack, onUpdateUser }) {
   const [venues, setVenues] = useState([]);
   const [formData, setFormData] = useState({
     subjects: [],
-    max_distance: 5,
     favorite_venues: []
   });
   const [loading, setLoading] = useState(false);
@@ -36,7 +35,6 @@ function UserProfile({ user, token, onBack, onUpdateUser }) {
       setProfile(response.data.user);
       setFormData({
         subjects: response.data.user.preferences?.subjects || [],
-        max_distance: response.data.user.preferences?.max_distance || 5,
         favorite_venues: response.data.user.preferences?.favorite_venues || []
       });
     } catch (err) {
@@ -74,13 +72,6 @@ function UserProfile({ user, token, onBack, onUpdateUser }) {
     }));
   };
 
-  const handleDistanceChange = (e) => {
-    setFormData(prev => ({
-      ...prev,
-      max_distance: parseInt(e.target.value)
-    }));
-  };
-
   const handleSavePreferences = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -109,6 +100,23 @@ function UserProfile({ user, token, onBack, onUpdateUser }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const formatPhoneNumber = (phone) => {
+    if (!phone) return 'N/A';
+    
+    // Remove country code if present
+    let digits = phone.replace(/\D/g, '');
+    if (digits.startsWith('1') && digits.length === 11) {
+      digits = digits.slice(1);
+    }
+    
+    // Format as 000-000-0000
+    if (digits.length === 10) {
+      return `+1 ${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+    }
+    
+    return phone;
   };
 
   if (!profile) {
@@ -190,27 +198,6 @@ function UserProfile({ user, token, onBack, onUpdateUser }) {
                 </div>
 
                 <div className="form-section">
-                  <label htmlFor="max_distance">
-                    Maximum Travel Distance: {formData.max_distance} km
-                  </label>
-                  <p className="form-hint">How far are you willing to travel for sessions?</p>
-                  <input
-                    type="range"
-                    id="max_distance"
-                    name="max_distance"
-                    min="1"
-                    max="20"
-                    value={formData.max_distance}
-                    onChange={handleDistanceChange}
-                    className="distance-slider"
-                  />
-                  <div className="slider-labels">
-                    <span>1 km</span>
-                    <span>20 km</span>
-                  </div>
-                </div>
-
-                <div className="form-section">
                   <label>Favorite Venues</label>
                   <p className="form-hint">Select your preferred study locations</p>
                   <div className="venues-list">
@@ -279,6 +266,10 @@ function UserProfile({ user, token, onBack, onUpdateUser }) {
                 <div className="info-row">
                   <label>Email Address</label>
                   <p>{profile.email}</p>
+                </div>
+                <div className="info-row">
+                  <label>Phone Number</label>
+                  <p>{formatPhoneNumber(profile.phone)}</p>
                 </div>
                 <div className="info-row">
                   <label>User ID</label>

@@ -14,10 +14,10 @@ function Register({ onRegister, onSwitchToLogin }) {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
+    phone: '',
     password: '',
     confirmPassword: '',
-    subjects: [],
-    max_distance: 5
+    subjects: []
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -53,16 +53,23 @@ function Register({ onRegister, onSwitchToLogin }) {
       return;
     }
 
+    // Phone number validation (basic)
+    const phoneRegex = /^[0-9]{10}$/;
+    if (!phoneRegex.test(formData.phone.replace(/[-\s]/g, ''))) {
+      setError('Please enter a valid 10-digit phone number');
+      return;
+    }
+
     setLoading(true);
 
     try {
       const payload = {
         name: formData.name,
         email: formData.email,
+        phone: formData.phone,
         password: formData.password,
         preferences: {
           subjects: formData.subjects,
-          max_distance: formData.max_distance,
           favorite_venues: []
         }
       };
@@ -110,6 +117,20 @@ function Register({ onRegister, onSwitchToLogin }) {
           </div>
 
           <div className="form-group">
+            <label htmlFor="phone">Phone Number (+1) is the default country code</label>
+            <input
+              type="tel"
+              id="phone"
+              name="phone"
+              value={formData.phone}
+              onChange={handleChange}
+              required
+              placeholder="xxxxxxxxxx"
+              pattern="[0-9]{10}"
+            />
+          </div>
+
+          <div className="form-group">
             <label htmlFor="password">Password</label>
             <input
               type="password"
@@ -149,21 +170,6 @@ function Register({ onRegister, onSwitchToLogin }) {
                 </button>
               ))}
             </div>
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="max_distance">
-              Maximum Travel Distance: {formData.max_distance} km
-            </label>
-            <input
-              type="range"
-              id="max_distance"
-              name="max_distance"
-              min="1"
-              max="20"
-              value={formData.max_distance}
-              onChange={handleChange}
-            />
           </div>
 
           {error && <div className="error-message">{error}</div>}

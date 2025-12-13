@@ -12,6 +12,7 @@ function SessionDetails({ session: initialSession, user, token, onBack }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
     if (initialSession) {
@@ -22,6 +23,15 @@ function SessionDetails({ session: initialSession, user, token, onBack }) {
       checkUserJoinRequest();
     }
   }, [initialSession]);
+
+  // Update current time every minute to refresh check-in availability
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000); // Update every minute
+
+    return () => clearInterval(timer);
+  }, []);
 
   const fetchSessionDetails = async () => {
     try {
@@ -48,7 +58,6 @@ function SessionDetails({ session: initialSession, user, token, onBack }) {
   };
 
   const checkUserJoinRequest = async () => {
-    // Check if current user has a pending join request
     try {
       const response = await axios.get(`${API_URL}/sessions/${initialSession.session_id}/join-requests`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -194,6 +203,39 @@ function SessionDetails({ session: initialSession, user, token, onBack }) {
     }
   };
 
+  // Check if check-in is available
+  const isCheckInAvailable = () => {
+    if (!session || session.status !== 'active') return false;
+    
+    const sessionStart = new Date(session.start_time);
+    const sessionEnd = new Date(sessionStart.getTime() + session.duration * 60000);
+    const now = currentTime;
+    
+    // Allow check-in 15 minutes before session starts until session ends
+    const checkInWindowStart = new Date(sessionStart.getTime() - 15 * 60000);
+    
+    return now >= checkInWindowStart && now <= sessionEnd;
+  };
+
+  const getCheckInMessage = () => {
+    if (!session) return '';
+    
+    const sessionStart = new Date(session.start_time);
+    const now = currentTime;
+    const diffMinutes = Math.floor((sessionStart - now) / 60000);
+    
+    if (diffMinutes > 15) {
+      return `Check-in opens 15 minutes before session (in ${diffMinutes - 15} minutes)`;
+    }
+    
+    const sessionEnd = new Date(sessionStart.getTime() + session.duration * 60000);
+    if (now > sessionEnd) {
+      return 'Check-in window has closed';
+    }
+    
+    return '';
+  };
+
   if (!session) {
     return <div className="loading">Loading session details...</div>;
   }
@@ -212,7 +254,7 @@ function SessionDetails({ session: initialSession, user, token, onBack }) {
   };
 
   const getTimeUntilStart = (startTime) => {
-    const now = new Date();
+    const now = currentTime;
     const start = new Date(startTime);
     const diffMs = start - now;
     const diffMins = Math.floor(diffMs / 60000);
@@ -229,10 +271,11 @@ function SessionDetails({ session: initialSession, user, token, onBack }) {
   const isFull = session.participants.length >= session.max_participants;
   const canJoin = !isParticipant && !isFull && session.status === 'active' && !userJoinRequest;
   const hasPendingRequest = userJoinRequest && userJoinRequest.status === 'pending';
-  const canCheckIn = isParticipant && session.status === 'active';
+  const canCheckIn = isParticipant && isCheckInAvailable();
   
   const currentParticipant = participants.find(p => p.user_id === user.user_id);
   const isCheckedIn = currentParticipant?.checked_in || false;
+  const checkInMessage = !canCheckIn && isParticipant && !isCheckedIn ? getCheckInMessage() : '';
 
   return (
     <div className="session-details-container">
@@ -334,6 +377,12 @@ function SessionDetails({ session: initialSession, user, token, onBack }) {
               >
                 {loading ? 'Checking in...' : 'Check In'}
               </button>
+            )}
+
+            {isParticipant && !canCheckIn && !isCheckedIn && checkInMessage && (
+              <div className="checkin-disabled-badge">
+                🕐 {checkInMessage}
+              </div>
             )}
 
             {isCheckedIn && (

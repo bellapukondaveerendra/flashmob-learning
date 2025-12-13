@@ -26,6 +26,13 @@ async function createAdminAccount() {
       if (!existingAdmin.phone) {
         existingAdmin.phone = '+10000000000';
       }
+      if (!existingAdmin.address) {
+        existingAdmin.address = 'Admin Office, Platform HQ';
+        existingAdmin.coordinates = {
+          type: 'Point',
+          coordinates: [-95.6752, 39.0473] // [lng, lat] - GeoJSON format
+        };
+      }
       await existingAdmin.save();
       
       console.log('✅ Admin password updated to: Admin@123');
@@ -43,9 +50,15 @@ async function createAdminAccount() {
         phone: '+10000000000',
         password: hashedPassword,
         name: 'Platform Administrator',
+        address: 'Admin Office, Platform HQ',
+        coordinates: {
+          type: 'Point',
+          coordinates: [-95.6752, 39.0473] // [lng, lat] - GeoJSON format
+        },
         is_admin: true,
         preferences: {
           subjects: [],
+          max_distance: 50,
           favorite_venues: []
         }
       });
@@ -57,6 +70,7 @@ async function createAdminAccount() {
       console.log('   Email: admin@gmail.com');
       console.log('   Password: Admin@123');
       console.log('   Phone: +1 000-000-0000');
+      console.log('   Address: Admin Office, Platform HQ');
       console.log('\n⚠️  Please change the password after first login!');
     }
 

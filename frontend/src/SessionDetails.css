@@ -474,3 +474,35 @@
     width: 100%;
   }
 }
+
+/* Add this to your existing SessionDetails.css file */
+
+.checkin-disabled-badge {
+  background: #fff3e0;
+  color: #ff9800;
+  padding: 1rem 2rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  border: 2px solid #ff9800;
+  text-align: center;
+}
+
+/* Update existing checked-in-badge for consistency */
+.checked-in-badge {
+  background: #e8f5e9;
+  color: #2e7d32;
+  padding: 1rem 2rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 1.05rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  border: 2px solid #4caf50;
+}

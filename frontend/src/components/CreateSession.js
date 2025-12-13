@@ -16,43 +16,40 @@ function CreateSession({ user, token, onBack }) {
     duration: 60,
     max_participants: 5
   });
-  const [userLocation, setUserLocation] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [loadingVenues, setLoadingVenues] = useState(true);
 
   // Get user's subjects from preferences
   const userSubjects = user?.preferences?.subjects || [];
+  const userMaxDistance = user?.preferences?.max_distance || 10;
 
   useEffect(() => {
-    fetchVenues();
-    getUserLocation();
+    fetchNearbyVenues();
   }, []);
 
-  const getUserLocation = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setUserLocation({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
-          });
-        },
-        (error) => {
-          console.error('Geolocation error:', error);
-        }
-      );
-    }
-  };
-
-  const fetchVenues = async () => {
+  const fetchNearbyVenues = async () => {
+    setLoadingVenues(true);
     try {
-      const response = await axios.get(`${API_URL}/venues`, {
+      const response = await axios.get(`${API_URL}/venues/nearby`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setVenues(response.data.venues);
     } catch (err) {
-      console.error('Error fetching venues:', err);
+      console.error('Error fetching nearby venues:', err);
+      setError('Failed to load venues within your distance preference');
+      // Fallback to all venues if nearby fails
+      try {
+        const fallbackResponse = await axios.get(`${API_URL}/venues`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setVenues(fallbackResponse.data.venues);
+      } catch (fallbackErr) {
+        console.error('Error fetching fallback venues:', fallbackErr);
+      }
+    } finally {
+      setLoadingVenues(false);
     }
   };
 
@@ -80,7 +77,7 @@ function CreateSession({ user, token, onBack }) {
 
   const getMinStartTime = () => {
     const now = new Date();
-    now.setMinutes(now.getMinutes() + 15);
+    // Allow sessions to be created from now onwards
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day = String(now.getDate()).padStart(2, '0');
@@ -91,12 +88,13 @@ function CreateSession({ user, token, onBack }) {
 
   const getMaxStartTime = () => {
     const now = new Date();
-    now.setMinutes(now.getMinutes() + 60);
+    // Allow sessions up to 30 days in the future
+    now.setDate(now.getDate() + 30);
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const hours = String(23).padStart(2, '0');
+    const minutes = String(59).padStart(2, '0');
     return `${year}-${month}-${day}T${hours}:${minutes}`;
   };
 
@@ -114,16 +112,16 @@ function CreateSession({ user, token, onBack }) {
     // Validate start time
     const now = new Date();
     const selectedTime = new Date(formData.start_time);
-    const diffMinutes = (selectedTime - now) / 60000;
 
-    if (diffMinutes < 15) {
-      setError('Session must start at least 15 minutes from now');
+    if (selectedTime <= now) {
+      setError('Session must start in the future');
       setLoading(false);
       return;
     }
 
-    if (diffMinutes > 60) {
-      setError('Session must start within 60 minutes from now');
+    const diffDays = (selectedTime - now) / (1000 * 60 * 60 * 24);
+    if (diffDays > 30) {
+      setError('Session cannot be scheduled more than 30 days in advance');
       setLoading(false);
       return;
     }
@@ -234,20 +232,41 @@ function CreateSession({ user, token, onBack }) {
           
           <div className="form-group">
             <label htmlFor="venue_id">Venue *</label>
-            <select
-              id="venue_id"
-              name="venue_id"
-              value={formData.venue_id}
-              onChange={handleVenueSelect}
-              required
-            >
-              <option value="">Select a venue</option>
-              {venues.map(venue => (
-                <option key={venue.venue_id} value={venue.venue_id}>
-                  {venue.name} - {venue.address}
-                </option>
-              ))}
-            </select>
+            {loadingVenues ? (
+              <div style={{ padding: '1rem', textAlign: 'center', color: '#666' }}>
+                Loading nearby venues...
+              </div>
+            ) : venues.length === 0 ? (
+              <div>
+                <select disabled>
+                  <option>No venues available</option>
+                </select>
+                <small style={{ color: '#c33', display: 'block', marginTop: '0.5rem' }}>
+                  No venues found within {userMaxDistance} miles. Please update your distance preference in Profile settings.
+                </small>
+              </div>
+            ) : (
+              <>
+                <select
+                  id="venue_id"
+                  name="venue_id"
+                  value={formData.venue_id}
+                  onChange={handleVenueSelect}
+                  required
+                >
+                  <option value="">Select a venue</option>
+                  {venues.map(venue => (
+                    <option key={venue.venue_id} value={venue.venue_id}>
+                      {venue.name} - {venue.address}
+                      {venue.distance !== undefined && ` (${venue.distance} mi)`}
+                    </option>
+                  ))}
+                </select>
+                <small>
+                  Showing {venues.length} venue{venues.length !== 1 ? 's' : ''} within {userMaxDistance} miles of your address
+                </small>
+              </>
+            )}
           </div>
 
           <div className="form-group">
@@ -278,7 +297,7 @@ function CreateSession({ user, token, onBack }) {
               max={getMaxStartTime()}
               required
             />
-            <small>Sessions must start between 15-60 minutes from now</small>
+            <small>Schedule sessions anytime within the next 30 days</small>
           </div>
 
           <div className="form-group">
@@ -321,7 +340,11 @@ function CreateSession({ user, token, onBack }) {
           <button type="button" onClick={onBack} className="cancel-btn">
             Cancel
           </button>
-          <button type="submit" className="submit-btn" disabled={loading}>
+          <button 
+            type="submit" 
+            className="submit-btn" 
+            disabled={loading || venues.length === 0}
+          >
             {loading ? 'Creating Session...' : 'Create Session'}
           </button>
         </div>

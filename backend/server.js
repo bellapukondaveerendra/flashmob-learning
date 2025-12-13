@@ -48,6 +48,20 @@ const authenticateAdmin = async (req, res, next) => {
   next();
 };
 
+const convertSessionToFrontend = (session) => {
+  const sessionObj = session.toObject ? session.toObject() : session;
+  
+  // Convert location coordinates from GeoJSON to {lat, lng}
+  if (sessionObj.location && sessionObj.location.coordinates && sessionObj.location.coordinates.coordinates) {
+    sessionObj.location.coordinates = {
+      lat: sessionObj.location.coordinates.coordinates[1],
+      lng: sessionObj.location.coordinates.coordinates[0]
+    };
+  }
+  
+  return sessionObj;
+};
+
 // Helper function to generate session ID
 const generateSessionId = async () => {
   const year = new Date().getFullYear();
@@ -81,10 +95,10 @@ const generateJoinRequestId = async () => {
 
 // ==================== AUTH ROUTES ====================
 
-// Register
+// Register - UPDATED to store coordinates in GeoJSON format
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { email, phone, password, name, preferences } = req.body;
+    const { email, phone, password, name, address, preferences } = req.body;
 
     const existingUser = await models.User.findOne({ email });
     if (existingUser) {
@@ -94,14 +108,22 @@ app.post('/api/auth/register', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
     const user_id = await generateUserId();
 
+    // Geocode the address to get coordinates
+    const coords = await geocodeAddress(address);
+
     const newUser = new models.User({
       user_id,
       email,
       phone,
       password: hashedPassword,
       name,
+      address,
+      coordinates: {
+        type: 'Point',
+        coordinates: [coords.lng, coords.lat] // [longitude, latitude] - GeoJSON format
+      },
       is_admin: false,
-      preferences: preferences || { subjects: [], favorite_venues: [] }
+      preferences: preferences || { subjects: [], max_distance: 10, favorite_venues: [] }
     });
 
     await newUser.save();
@@ -115,7 +137,9 @@ app.post('/api/auth/register', async (req, res) => {
         user_id, 
         email,
         phone,
-        name, 
+        name,
+        address,
+        coordinates: coords, // Return as {lat, lng} for frontend
         is_admin: false,
         preferences: newUser.preferences 
       }
@@ -124,6 +148,7 @@ app.post('/api/auth/register', async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
+
 
 // Login - UPDATED to return is_admin flag
 app.post('/api/auth/login', async (req, res) => {
@@ -189,7 +214,10 @@ app.get('/api/sessions/my-sessions', authenticateToken, async (req, res) => {
     // Sort by start time
     allSessions.sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
 
-    res.json({ sessions: allSessions });
+    // Convert coordinates for frontend
+    const convertedSessions = allSessions.map(convertSessionToFrontend);
+
+    res.json({ sessions: convertedSessions });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -204,17 +232,28 @@ app.post('/api/sessions', authenticateToken, async (req, res) => {
 
     const session_id = await generateSessionId();
 
+    // Convert location coordinates from {lat, lng} to GeoJSON format
+    const geoJsonLocation = {
+      venue_id: location.venue_id,
+      venue_name: location.venue_name,
+      coordinates: {
+        type: 'Point',
+        coordinates: [location.coordinates.lng, location.coordinates.lat] // [lng, lat]
+      },
+      meeting_spot: location.meeting_spot
+    };
+
     const newSession = new models.Session({
       session_id,
       creator_id: req.user.user_id,
       subject,
       topic,
-      location,
+      location: geoJsonLocation, // Use GeoJSON format
       start_time,
       duration,
       max_participants,
       participants: [req.user.user_id],
-      status: 'pending_admin_approval',  // NEW: Wait for admin approval
+      status: 'pending_admin_approval',
       admin_approved: false
     });
 
@@ -241,10 +280,10 @@ app.post('/api/sessions', authenticateToken, async (req, res) => {
       session: newSession 
     });
   } catch (error) {
+    console.error('Error creating session:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
-
 // Get All Sessions - UPDATED to only show active sessions to non-admins
 app.get('/api/sessions/all', authenticateToken, async (req, res) => {
   try {
@@ -257,7 +296,11 @@ app.get('/api/sessions/all', authenticateToken, async (req, res) => {
     }
     
     const sessions = await models.Session.find(query).sort({ start_time: 1 });
-    res.json({ sessions });
+    
+    // Convert coordinates for frontend
+    const convertedSessions = sessions.map(convertSessionToFrontend);
+    
+    res.json({ sessions: convertedSessions });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -269,7 +312,7 @@ app.get('/api/sessions/nearby', authenticateToken, async (req, res) => {
     const { lat, lng, maxDistance = 5000, subject } = req.query;
 
     const query = {
-      status: 'active',  // Only active sessions
+      status: 'active',
       start_time: { $gte: new Date() },
       'location.coordinates': {
         $near: {
@@ -288,7 +331,10 @@ app.get('/api/sessions/nearby', authenticateToken, async (req, res) => {
 
     const sessions = await models.Session.find(query).limit(20);
 
-    res.json({ sessions });
+    // Convert coordinates for frontend
+    const convertedSessions = sessions.map(convertSessionToFrontend);
+
+    res.json({ sessions: convertedSessions });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -305,7 +351,10 @@ app.get('/api/sessions/:session_id', authenticateToken, async (req, res) => {
 
     const participants = await models.Participant.find({ session_id: req.params.session_id });
 
-    res.json({ session, participants });
+    // Convert coordinates for frontend
+    const convertedSession = convertSessionToFrontend(session);
+
+    res.json({ session: convertedSession, participants });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -582,23 +631,81 @@ app.post('/api/sessions/:session_id/remove-participant', authenticateToken, asyn
 app.get('/api/venues', authenticateToken, async (req, res) => {
   try {
     const venues = await models.Venue.find();
-    res.json({ venues });
+    
+    // Convert GeoJSON coordinates to {lat, lng} format for frontend
+    const formattedVenues = venues.map(venue => ({
+      venue_id: venue.venue_id,
+      name: venue.name,
+      address: venue.address,
+      coordinates: {
+        lat: venue.coordinates.coordinates[1],
+        lng: venue.coordinates.coordinates[0]
+      },
+      type: venue.type,
+      wifi_quality: venue.wifi_quality,
+      noise_level: venue.noise_level,
+      study_rating: venue.study_rating
+    }));
+    
+    res.json({ venues: formattedVenues });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
 // Get Venue by ID
-app.get('/api/venues/:venue_id', authenticateToken, async (req, res) => {
-  try {
-    const venue = await models.Venue.findOne({ venue_id: req.params.venue_id });
+// app.get('/api/venues/:venue_id', authenticateToken, async (req, res) => {
+//   try {
+//     const venue = await models.Venue.findOne({ venue_id: req.params.venue_id });
     
-    if (!venue) {
-      return res.status(404).json({ message: 'Venue not found' });
+//     if (!venue) {
+//       return res.status(404).json({ message: 'Venue not found' });
+//     }
+
+//     res.json({ venue });
+//   } catch (error) {
+    // res.status(500).json({ message: 'Server error', error: error.message });
+//   }
+// });
+
+
+
+app.put('/api/users/address', authenticateToken, async (req, res) => {
+  try {
+    const { address } = req.body;
+
+    if (!address || !address.trim()) {
+      return res.status(400).json({ message: 'Address is required' });
     }
 
-    res.json({ venue });
+    // Geocode the new address
+    const coords = await geocodeAddress(address);
+
+    const user = await models.User.findOneAndUpdate(
+      { user_id: req.user.user_id },
+      { 
+        address: address.trim(),
+        coordinates: {
+          type: 'Point',
+          coordinates: [coords.lng, coords.lat] // [longitude, latitude] - GeoJSON format
+        }
+      },
+      { new: true }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.json({ 
+      message: 'Address updated successfully', 
+      user: {
+        ...user.toObject(),
+        coordinates: coords // Return as {lat, lng} for frontend
+      }
+    });
   } catch (error) {
+    console.error('Error updating address:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -620,16 +727,17 @@ app.get('/api/users/me', authenticateToken, async (req, res) => {
   }
 });
 
-// Update User Preferences
+// Update User Preferences - UPDATED to include max_distance
 app.put('/api/users/preferences', authenticateToken, async (req, res) => {
   try {
-    const { subjects, favorite_venues } = req.body;
+    const { subjects, max_distance, favorite_venues } = req.body;
 
     const user = await models.User.findOneAndUpdate(
       { user_id: req.user.user_id },
       { 
         preferences: {
           subjects: subjects || [],
+          max_distance: max_distance || 10,
           favorite_venues: favorite_venues || []
         }
       },
@@ -638,6 +746,81 @@ app.put('/api/users/preferences', authenticateToken, async (req, res) => {
 
     res.json({ message: 'Preferences updated successfully', user });
   } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Get Venues within User's Distance - UPDATED to handle GeoJSON coordinates
+// Add this EXACT route to your backend/server.js file
+// Replace the existing /api/venues/nearby route with this:
+
+// Get Venues within User's Distance - FIXED VERSION
+app.get('/api/venues/nearby', authenticateToken, async (req, res) => {
+  try {
+    const user = await models.User.findOne({ user_id: req.user.user_id });
+    
+    if (!user || !user.coordinates || !user.coordinates.coordinates) {
+      return res.status(400).json({ message: 'User location not found' });
+    }
+
+    const allVenues = await models.Venue.find();
+    const maxDistance = user.preferences?.max_distance || 10;
+
+    // Extract lat/lng from GeoJSON format
+    const userLng = user.coordinates.coordinates[0];
+    const userLat = user.coordinates.coordinates[1];
+
+    console.log(`User Location: [${userLat}, ${userLng}]`);
+    console.log(`Max Distance: ${maxDistance} miles`);
+    console.log(`Total venues in DB: ${allVenues.length}`);
+
+    // Calculate distance helper function
+    const calculateDistance = (lat1, lon1, lat2, lon2) => {
+      const R = 3959; // Earth's radius in miles
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = 
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c; // Distance in miles
+    };
+
+    // Filter and map venues
+    const nearbyVenues = allVenues
+      .map(venue => {
+        // Extract venue coordinates from GeoJSON
+        const venueLng = venue.coordinates.coordinates[0];
+        const venueLat = venue.coordinates.coordinates[1];
+        
+        const distance = calculateDistance(
+          userLat,
+          userLng,
+          venueLat,
+          venueLng
+        );
+        
+        return {
+          venue_id: venue.venue_id,
+          name: venue.name,
+          address: venue.address,
+          coordinates: { lat: venueLat, lng: venueLng },
+          type: venue.type,
+          wifi_quality: venue.wifi_quality,
+          noise_level: venue.noise_level,
+          study_rating: venue.study_rating,
+          distance: Math.round(distance * 10) / 10
+        };
+      })
+      .filter(venue => venue.distance <= maxDistance) // IMPORTANT: Filter by distance
+      .sort((a, b) => a.distance - b.distance); // Sort by distance
+
+    console.log(`Venues within ${maxDistance} miles: ${nearbyVenues.length}`);
+
+    res.json({ venues: nearbyVenues });
+  } catch (error) {
+    console.error('Error in /api/venues/nearby:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -918,8 +1101,9 @@ app.get('/api/admin/sessions/pending', authenticateToken, authenticateAdmin, asy
     const sessionsWithCreator = await Promise.all(
       pendingSessions.map(async (session) => {
         const creator = await models.User.findOne({ user_id: session.creator_id }).select('-password');
+        const convertedSession = convertSessionToFrontend(session);
         return {
-          ...session.toObject(),
+          ...convertedSession,
           creator: creator ? { user_id: creator.user_id, name: creator.name, email: creator.email } : null
         };
       })
@@ -1005,6 +1189,65 @@ app.delete('/api/admin/sessions/:session_id', authenticateToken, authenticateAdm
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
+
+
+const geocodeAddress = async (address) => {
+  // This is a simplified geocoding function
+  // In production, integrate with Google Maps Geocoding API or similar
+  
+  // For now, return approximate coordinates based on common cities
+  const cityCoordinates = {
+    'warrensburg': { lat: 38.7625, lng: -93.7344 },
+    'kansas': { lat: 39.0473, lng: -95.6752 },
+    'kansas city': { lat: 39.0997, lng: -94.5786 },
+    'olathe': { lat: 38.8831, lng: -94.8191 },
+    'overland park': { lat: 38.9822, lng: -94.6708 },
+    'new york': { lat: 40.7128, lng: -74.0060 },
+    'los angeles': { lat: 34.0522, lng: -118.2437 },
+    'chicago': { lat: 41.8781, lng: -87.6298 },
+    'houston': { lat: 29.7604, lng: -95.3698 },
+    'phoenix': { lat: 33.4484, lng: -112.0740 },
+    'philadelphia': { lat: 39.9526, lng: -75.1652 },
+    'san antonio': { lat: 29.4241, lng: -98.4936 },
+    'san diego': { lat: 32.7157, lng: -117.1611 },
+    'dallas': { lat: 32.7767, lng: -96.7970 },
+    'san jose': { lat: 37.3382, lng: -121.8863 },
+    'austin': { lat: 30.2672, lng: -97.7431 },
+    'jacksonville': { lat: 30.3322, lng: -81.6557 },
+    'san francisco': { lat: 37.7749, lng: -122.4194 },
+    'columbus': { lat: 39.9612, lng: -82.9988 },
+    'seattle': { lat: 47.6062, lng: -122.3321 },
+    'denver': { lat: 39.7392, lng: -104.9903 },
+    'boston': { lat: 42.3601, lng: -71.0589 },
+    'miami': { lat: 25.7617, lng: -80.1918 }
+  };
+  
+  const addressLower = address.toLowerCase();
+  
+  // Try to find a matching city
+  for (const [city, coords] of Object.entries(cityCoordinates)) {
+    if (addressLower.includes(city)) {
+      return coords;
+    }
+  }
+  
+  // Default to Warrensburg coordinates if no match found
+  return { lat: 38.7625, lng: -93.7344 };
+};
+
+
+// Calculate distance between two coordinates (Haversine formula)
+const calculateDistance = (lat1, lon1, lat2, lon2) => {
+  const R = 3959; // Earth's radius in miles
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c; // Distance in miles
+};
 
 // Get Platform Statistics (Admin only) - UPDATED
 app.get('/api/admin/stats', authenticateToken, authenticateAdmin, async (req, res) => {

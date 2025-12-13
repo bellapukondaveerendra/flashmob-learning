@@ -1,22 +1,28 @@
 const mongoose = require('mongoose');
 
-// User Schema - UPDATED: Added phone, removed max_distance
+// User Schema - Uses GeoJSON format for 2dsphere index
 const userSchema = new mongoose.Schema({
   user_id: { type: Number, required: true, unique: true },
   email: { type: String, required: true, unique: true },
   phone: { type: String, required: true },
   password: { type: String, required: true },
   name: { type: String, required: true },
+  address: { type: String, required: true },
+  coordinates: {
+    type: { type: String, enum: ['Point'], default: 'Point' },
+    coordinates: { type: [Number], required: true } // [longitude, latitude]
+  },
   is_admin: { type: Boolean, default: false },
   preferences: {
     subjects: [String],
+    max_distance: { type: Number, default: 10 },
     favorite_venues: [String]
   },
   active_sessions: [String],
   created_at: { type: Date, default: Date.now }
 });
 
-// Session Schema
+// Session Schema - UPDATED: location.coordinates to GeoJSON format
 const sessionSchema = new mongoose.Schema({
   session_id: { type: String, required: true, unique: true },
   creator_id: { type: Number, required: true },
@@ -26,8 +32,8 @@ const sessionSchema = new mongoose.Schema({
     venue_id: String,
     venue_name: String,
     coordinates: {
-      lat: Number,
-      lng: Number
+      type: { type: String, enum: ['Point'], default: 'Point' },
+      coordinates: { type: [Number], required: true } // [longitude, latitude]
     },
     meeting_spot: String
   },
@@ -61,14 +67,14 @@ const joinRequestSchema = new mongoose.Schema({
   reviewed_by: { type: Number }
 });
 
-// Venue Schema
+// Venue Schema - Uses GeoJSON format for 2dsphere index
 const venueSchema = new mongoose.Schema({
   venue_id: { type: String, required: true, unique: true },
   name: { type: String, required: true },
   address: { type: String, required: true },
   coordinates: {
-    lat: { type: Number, required: true },
-    lng: { type: Number, required: true }
+    type: { type: String, enum: ['Point'], default: 'Point' },
+    coordinates: { type: [Number], required: true } // [longitude, latitude]
   },
   type: { type: String, required: true },
   wifi_quality: { type: Number, min: 1, max: 5 },
@@ -177,14 +183,15 @@ const paymentSchema = new mongoose.Schema({
 });
 
 // Create indexes for better query performance
-sessionSchema.index({ 'location.coordinates': '2dsphere' });
+sessionSchema.index({ 'location.coordinates': '2dsphere' }); // GeoJSON 2dsphere index
 sessionSchema.index({ start_time: 1, status: 1 });
 sessionSchema.index({ creator_id: 1 });
 sessionSchema.index({ status: 1 });
-venueSchema.index({ coordinates: '2dsphere' });
+venueSchema.index({ coordinates: '2dsphere' }); // GeoJSON 2dsphere index
 participantSchema.index({ user_id: 1, session_id: 1 });
 joinRequestSchema.index({ session_id: 1, status: 1 });
 joinRequestSchema.index({ user_id: 1 });
+userSchema.index({ coordinates: '2dsphere' }); // GeoJSON 2dsphere index
 
 // Export models
 module.exports = {

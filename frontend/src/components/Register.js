@@ -15,9 +15,11 @@ function Register({ onRegister, onSwitchToLogin }) {
     name: '',
     email: '',
     phone: '',
+    address: '',
     password: '',
     confirmPassword: '',
-    subjects: []
+    subjects: [],
+    max_distance: 10
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,6 +28,29 @@ function Register({ onRegister, onSwitchToLogin }) {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value
+    });
+    setError('');
+  };
+
+  const handlePhoneChange = (e) => {
+    let value = e.target.value.replace(/\D/g, ''); // Remove all non-digits
+    
+    // Limit to 10 digits
+    if (value.length > 10) {
+      value = value.slice(0, 10);
+    }
+    
+    // Format as 000-000-0000
+    let formattedPhone = value;
+    if (value.length > 3 && value.length <= 6) {
+      formattedPhone = `${value.slice(0, 3)}-${value.slice(3)}`;
+    } else if (value.length > 6) {
+      formattedPhone = `${value.slice(0, 3)}-${value.slice(3, 6)}-${value.slice(6)}`;
+    }
+    
+    setFormData({
+      ...formData,
+      phone: formattedPhone
     });
     setError('');
   };
@@ -53,10 +78,15 @@ function Register({ onRegister, onSwitchToLogin }) {
       return;
     }
 
-    // Phone number validation (basic)
-    const phoneRegex = /^[0-9]{10}$/;
-    if (!phoneRegex.test(formData.phone.replace(/[-\s]/g, ''))) {
+    // Phone number validation (must be exactly 10 digits when formatted)
+    const digitsOnly = formData.phone.replace(/\D/g, '');
+    if (digitsOnly.length !== 10) {
       setError('Please enter a valid 10-digit phone number');
+      return;
+    }
+
+    if (!formData.address.trim()) {
+      setError('Please enter your address');
       return;
     }
 
@@ -66,10 +96,12 @@ function Register({ onRegister, onSwitchToLogin }) {
       const payload = {
         name: formData.name,
         email: formData.email,
-        phone: formData.phone,
+        phone: `+1${digitsOnly}`,
+        address: formData.address,
         password: formData.password,
         preferences: {
           subjects: formData.subjects,
+          max_distance: formData.max_distance,
           favorite_venues: []
         }
       };
@@ -117,16 +149,38 @@ function Register({ onRegister, onSwitchToLogin }) {
           </div>
 
           <div className="form-group">
-            <label htmlFor="phone">Phone Number (+1) is the default country code</label>
+            <label htmlFor="phone">Phone Number</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ 
+                padding: '0.9rem', 
+                background: '#f0f0f0', 
+                borderRadius: '8px',
+                fontWeight: '600',
+                color: '#666'
+              }}>+1</span>
+              <input
+                type="tel"
+                id="phone"
+                name="phone"
+                value={formData.phone}
+                onChange={handlePhoneChange}
+                required
+                placeholder="000-000-0000"
+                style={{ flex: 1 }}
+              />
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="address">Address</label>
             <input
-              type="tel"
-              id="phone"
-              name="phone"
-              value={formData.phone}
+              type="text"
+              id="address"
+              name="address"
+              value={formData.address}
               onChange={handleChange}
               required
-              placeholder="xxxxxxxxxx"
-              pattern="[0-9]{10}"
+              placeholder="City, State (e.g., Kansas City, KS)"
             />
           </div>
 
@@ -169,6 +223,25 @@ function Register({ onRegister, onSwitchToLogin }) {
                   {subject}
                 </button>
               ))}
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="max_distance">
+              Maximum Distance for Venues: {formData.max_distance} miles
+            </label>
+            <input
+              type="range"
+              id="max_distance"
+              name="max_distance"
+              min="5"
+              max="50"
+              value={formData.max_distance}
+              onChange={handleChange}
+            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#666', marginTop: '0.3rem' }}>
+              <span>5 miles</span>
+              <span>50 miles</span>
             </div>
           </div>
 

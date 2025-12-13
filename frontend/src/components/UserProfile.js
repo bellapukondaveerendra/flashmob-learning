@@ -15,17 +15,29 @@ function UserProfile({ user, token, onBack, onUpdateUser }) {
   const [venues, setVenues] = useState([]);
   const [formData, setFormData] = useState({
     subjects: [],
+    max_distance: 10,
     favorite_venues: []
   });
+  const [addressData, setAddressData] = useState({
+    address: '',
+    isEditing: false
+  });
   const [loading, setLoading] = useState(false);
+  const [addressLoading, setAddressLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [activeTab, setActiveTab] = useState('preferences');
 
   useEffect(() => {
     fetchUserProfile();
-    fetchVenues();
   }, []);
+
+  useEffect(() => {
+    // Fetch venues whenever max_distance changes
+    if (profile) {
+      fetchNearbyVenues();
+    }
+  }, [formData.max_distance, profile]);
 
   const fetchUserProfile = async () => {
     try {
@@ -35,7 +47,12 @@ function UserProfile({ user, token, onBack, onUpdateUser }) {
       setProfile(response.data.user);
       setFormData({
         subjects: response.data.user.preferences?.subjects || [],
+        max_distance: response.data.user.preferences?.max_distance || 10,
         favorite_venues: response.data.user.preferences?.favorite_venues || []
+      });
+      setAddressData({
+        address: response.data.user.address || '',
+        isEditing: false
       });
     } catch (err) {
       setError('Failed to load profile');
@@ -43,14 +60,23 @@ function UserProfile({ user, token, onBack, onUpdateUser }) {
     }
   };
 
-  const fetchVenues = async () => {
+  const fetchNearbyVenues = async () => {
     try {
-      const response = await axios.get(`${API_URL}/venues`, {
+      const response = await axios.get(`${API_URL}/venues/nearby`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setVenues(response.data.venues);
     } catch (err) {
       console.error('Error fetching venues:', err);
+      // Fallback to all venues if nearby fails
+      try {
+        const fallbackResponse = await axios.get(`${API_URL}/venues`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setVenues(fallbackResponse.data.venues);
+      } catch (fallbackErr) {
+        console.error('Error fetching fallback venues:', fallbackErr);
+      }
     }
   };
 
@@ -70,6 +96,79 @@ function UserProfile({ user, token, onBack, onUpdateUser }) {
         ? prev.favorite_venues.filter(v => v !== venueId)
         : [...prev.favorite_venues, venueId]
     }));
+  };
+
+  const handleDistanceChange = (e) => {
+    setFormData(prev => ({
+      ...prev,
+      max_distance: parseInt(e.target.value)
+    }));
+  };
+
+  const handleAddressChange = (e) => {
+    setAddressData(prev => ({
+      ...prev,
+      address: e.target.value
+    }));
+  };
+
+  const handleEditAddress = () => {
+    setAddressData(prev => ({
+      ...prev,
+      isEditing: true
+    }));
+  };
+
+  const handleCancelEditAddress = () => {
+    setAddressData({
+      address: profile.address,
+      isEditing: false
+    });
+  };
+
+  const handleUpdateAddress = async () => {
+    if (!addressData.address.trim()) {
+      setError('Address cannot be empty');
+      return;
+    }
+
+    setAddressLoading(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const response = await axios.put(
+        `${API_URL}/users/address`,
+        { address: addressData.address },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      
+      setProfile(response.data.user);
+      setAddressData({
+        address: response.data.user.address,
+        isEditing: false
+      });
+      setSuccess('Address updated successfully! Venues will be refreshed.');
+      
+      // Update user in parent component
+      const updatedUser = {
+        ...user,
+        address: response.data.user.address,
+        coordinates: response.data.user.coordinates
+      };
+      onUpdateUser(updatedUser);
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      
+      // Refresh venues based on new location
+      setTimeout(() => {
+        fetchNearbyVenues();
+        setSuccess('');
+      }, 2000);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to update address');
+    } finally {
+      setAddressLoading(false);
+    }
   };
 
   const handleSavePreferences = async (e) => {
@@ -95,6 +194,9 @@ function UserProfile({ user, token, onBack, onUpdateUser }) {
       };
       onUpdateUser(updatedUser);
       localStorage.setItem('user', JSON.stringify(updatedUser));
+      
+      // Refresh venues based on new distance
+      fetchNearbyVenues();
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to save preferences');
     } finally {
@@ -198,30 +300,66 @@ function UserProfile({ user, token, onBack, onUpdateUser }) {
                 </div>
 
                 <div className="form-section">
+                  <label htmlFor="max_distance">
+                    Maximum Distance for Venues: {formData.max_distance} miles
+                  </label>
+                  <p className="form-hint">How far are you willing to travel for sessions?</p>
+                  <input
+                    type="range"
+                    id="max_distance"
+                    name="max_distance"
+                    min="5"
+                    max="50"
+                    value={formData.max_distance}
+                    onChange={handleDistanceChange}
+                    className="distance-slider"
+                  />
+                  <div className="slider-labels">
+                    <span>5 miles</span>
+                    <span>50 miles</span>
+                  </div>
+                  <p className="form-hint" style={{ marginTop: '0.5rem', fontStyle: 'italic' }}>
+                    {venues.length} venue{venues.length !== 1 ? 's' : ''} found within {formData.max_distance} miles
+                  </p>
+                </div>
+
+                <div className="form-section">
                   <label>Favorite Venues</label>
                   <p className="form-hint">Select your preferred study locations</p>
-                  <div className="venues-list">
-                    {venues.map(venue => (
-                      <div
-                        key={venue.venue_id}
-                        className={`venue-item ${formData.favorite_venues.includes(venue.venue_id) ? 'selected' : ''}`}
-                        onClick={() => handleVenueToggle(venue.venue_id)}
-                      >
-                        <div className="venue-info">
-                          <h4>{venue.name}</h4>
-                          <p>{venue.address}</p>
-                          <div className="venue-ratings">
-                            <span>📶 WiFi: {venue.wifi_quality}/5</span>
-                            <span>🔇 Noise: {venue.noise_level}/5</span>
-                            <span>⭐ Rating: {venue.study_rating}/5</span>
+                  {venues.length === 0 ? (
+                    <div className="empty-state">
+                      <p>No venues found within {formData.max_distance} miles of your address.</p>
+                      <p>Try increasing your maximum distance.</p>
+                    </div>
+                  ) : (
+                    <div className="venues-list">
+                      {venues.map(venue => (
+                        <div
+                          key={venue.venue_id}
+                          className={`venue-item ${formData.favorite_venues.includes(venue.venue_id) ? 'selected' : ''}`}
+                          onClick={() => handleVenueToggle(venue.venue_id)}
+                        >
+                          <div className="venue-info">
+                            <h4>
+                              {venue.name}
+                              {venue.distance !== undefined && (
+                                <span className="venue-distance"> ({venue.distance} mi away)</span>
+                              )}
+                            </h4>
+                            <p>{venue.address}</p>
+                            <div className="venue-ratings">
+                              <span>📶 WiFi: {venue.wifi_quality}/5</span>
+                              <span>🔇 Noise: {venue.noise_level}/5</span>
+                              <span>⭐ Rating: {venue.study_rating}/5</span>
+                            </div>
                           </div>
+                          {formData.favorite_venues.includes(venue.venue_id) && (
+                            <div className="venue-selected-icon">✓</div>
+                          )}
                         </div>
-                        {formData.favorite_venues.includes(venue.venue_id) && (
-                          <div className="venue-selected-icon">✓</div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <button type="submit" className="save-btn" disabled={loading}>
@@ -270,6 +408,46 @@ function UserProfile({ user, token, onBack, onUpdateUser }) {
                 <div className="info-row">
                   <label>Phone Number</label>
                   <p>{formatPhoneNumber(profile.phone)}</p>
+                </div>
+                <div className="info-row editable-row">
+                  <label>Address</label>
+                  {addressData.isEditing ? (
+                    <div className="address-edit-container">
+                      <input
+                        type="text"
+                        value={addressData.address}
+                        onChange={handleAddressChange}
+                        className="address-input"
+                        placeholder="City, State (e.g., Warrensburg, MO)"
+                      />
+                      <div className="address-actions">
+                        <button 
+                          onClick={handleUpdateAddress}
+                          className="update-address-btn"
+                          disabled={addressLoading}
+                        >
+                          {addressLoading ? 'Updating...' : 'Update'}
+                        </button>
+                        <button 
+                          onClick={handleCancelEditAddress}
+                          className="cancel-address-btn"
+                          disabled={addressLoading}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="address-display-container">
+                      <p>{profile.address}</p>
+                      <button 
+                        onClick={handleEditAddress}
+                        className="edit-address-btn"
+                      >
+                        ✏️ Edit
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <div className="info-row">
                   <label>User ID</label>

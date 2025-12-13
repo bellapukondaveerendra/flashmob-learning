@@ -182,6 +182,14 @@ const paymentSchema = new mongoose.Schema({
   payment_date: { type: Date, default: Date.now }
 });
 
+const sessionMessageSchema = new mongoose.Schema({
+  message_id: { type: String, required: true, unique: true },
+  session_id: { type: String, required: true },
+  user_id: { type: Number, required: true },
+  message: { type: String, required: true, maxlength: 500 },
+  created_at: { type: Date, default: Date.now }
+});
+
 // Create indexes for better query performance
 sessionSchema.index({ 'location.coordinates': '2dsphere' }); // GeoJSON 2dsphere index
 sessionSchema.index({ start_time: 1, status: 1 });
@@ -192,6 +200,9 @@ participantSchema.index({ user_id: 1, session_id: 1 });
 joinRequestSchema.index({ session_id: 1, status: 1 });
 joinRequestSchema.index({ user_id: 1 });
 userSchema.index({ coordinates: '2dsphere' }); // GeoJSON 2dsphere index
+
+sessionMessageSchema.index({ session_id: 1, created_at: 1 });
+sessionMessageSchema.index({ user_id: 1 });
 
 // Export models
 module.exports = {
@@ -206,5 +217,6 @@ module.exports = {
   Location: mongoose.model('Location', locationSchema),
   Enrollment: mongoose.model('Enrollment', enrollmentSchema),
   Payment: mongoose.model('Payment', paymentSchema),
-  JoinRequest: mongoose.model('JoinRequest', joinRequestSchema)
+  JoinRequest: mongoose.model('JoinRequest', joinRequestSchema),
+  SessionMessage: mongoose.model('SessionMessage', sessionMessageSchema)
 };

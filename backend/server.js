@@ -62,6 +62,11 @@ const convertSessionToFrontend = (session) => {
   return sessionObj;
 };
 
+const generateMessageId = async () => {
+  const count = await models.SessionMessage.countDocuments();
+  return `MSG${new Date().getFullYear()}${String(count + 1).padStart(6, '0')}`;
+};
+
 // Helper function to generate session ID
 const generateSessionId = async () => {
   const year = new Date().getFullYear();
@@ -178,6 +183,88 @@ app.post('/api/auth/login', async (req, res) => {
         preferences: user.preferences,
         active_sessions: user.active_sessions
       }
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+app.get('/api/sessions/:session_id/messages', authenticateToken, async (req, res) => {
+  try {
+    const session = await models.Session.findOne({ session_id: req.params.session_id });
+    
+    if (!session) {
+      return res.status(404).json({ message: 'Session not found' });
+    }
+
+    // Only participants can see messages
+    if (!session.participants.includes(req.user.user_id)) {
+      return res.status(403).json({ message: 'Only participants can view messages' });
+    }
+
+    const messages = await models.SessionMessage.find({
+      session_id: req.params.session_id
+    }).sort({ created_at: 1 }); // Oldest first
+
+    // Get user names for each message
+    const messagesWithNames = await Promise.all(
+      messages.map(async (msg) => {
+        const user = await models.User.findOne({ user_id: msg.user_id }).select('name');
+        return {
+          message_id: msg.message_id,
+          session_id: msg.session_id,
+          user_id: msg.user_id,
+          user_name: user ? user.name : null,
+          message: msg.message,
+          created_at: msg.created_at
+        };
+      })
+    );
+
+    res.json({ messages: messagesWithNames });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Send a message to a session
+app.post('/api/sessions/:session_id/messages', authenticateToken, async (req, res) => {
+  try {
+    const { message } = req.body;
+
+    if (!message || !message.trim()) {
+      return res.status(400).json({ message: 'Message cannot be empty' });
+    }
+
+    if (message.length > 500) {
+      return res.status(400).json({ message: 'Message cannot exceed 500 characters' });
+    }
+
+    const session = await models.Session.findOne({ session_id: req.params.session_id });
+    
+    if (!session) {
+      return res.status(404).json({ message: 'Session not found' });
+    }
+
+    // Only participants can send messages
+    if (!session.participants.includes(req.user.user_id)) {
+      return res.status(403).json({ message: 'Only participants can send messages' });
+    }
+
+    const message_id = await generateMessageId();
+
+    const newMessage = new models.SessionMessage({
+      message_id,
+      session_id: req.params.session_id,
+      user_id: req.user.user_id,
+      message: message.trim()
+    });
+
+    await newMessage.save();
+
+    res.status(201).json({ 
+      message: 'Message sent successfully',
+      sessionMessage: newMessage
     });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -351,15 +438,26 @@ app.get('/api/sessions/:session_id', authenticateToken, async (req, res) => {
 
     const participants = await models.Participant.find({ session_id: req.params.session_id });
 
+    // Get user details for each participant
+    const participantsWithDetails = await Promise.all(
+      participants.map(async (participant) => {
+        const user = await models.User.findOne({ user_id: participant.user_id }).select('name email');
+        return {
+          ...participant.toObject(),
+          name: user ? user.name : null,
+          email: user ? user.email : null
+        };
+      })
+    );
+
     // Convert coordinates for frontend
     const convertedSession = convertSessionToFrontend(session);
 
-    res.json({ session: convertedSession, participants });
+    res.json({ session: convertedSession, participants: participantsWithDetails });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
-
 // Join Session - UPDATED to create join request instead of immediate join
 app.post('/api/sessions/:session_id/join', authenticateToken, async (req, res) => {
   try {
@@ -1089,6 +1187,8 @@ app.post('/api/admin/users/:user_id/suspend', authenticateToken, authenticateAdm
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
+
+
 
 // Get Pending Sessions (Admin only) - NEW
 app.get('/api/admin/sessions/pending', authenticateToken, authenticateAdmin, async (req, res) => {

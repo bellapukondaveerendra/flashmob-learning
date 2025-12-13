@@ -9,6 +9,9 @@ function SessionDetails({ session: initialSession, user, token, onBack }) {
   const [participants, setParticipants] = useState([]);
   const [joinRequests, setJoinRequests] = useState([]);
   const [userJoinRequest, setUserJoinRequest] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -21,6 +24,14 @@ function SessionDetails({ session: initialSession, user, token, onBack }) {
         fetchJoinRequests();
       }
       checkUserJoinRequest();
+      
+      // Fetch messages if user is a participant
+      if (initialSession.participants.includes(user.user_id)) {
+        fetchMessages();
+        // Poll for new messages every 5 seconds
+        const messageInterval = setInterval(fetchMessages, 5000);
+        return () => clearInterval(messageInterval);
+      }
     }
   }, [initialSession]);
 
@@ -43,6 +54,38 @@ function SessionDetails({ session: initialSession, user, token, onBack }) {
     } catch (err) {
       setError('Failed to load session details');
       console.error('Error fetching session details:', err);
+    }
+  };
+
+  const fetchMessages = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/sessions/${initialSession.session_id}/messages`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setMessages(response.data.messages);
+    } catch (err) {
+      console.error('Error fetching messages:', err);
+    }
+  };
+
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    if (!newMessage.trim()) return;
+
+    setSendingMessage(true);
+    try {
+      await axios.post(
+        `${API_URL}/sessions/${session.session_id}/messages`,
+        { message: newMessage },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setNewMessage('');
+      fetchMessages();
+    } catch (err) {
+      setError('Failed to send message');
+      setTimeout(() => setError(''), 3000);
+    } finally {
+      setSendingMessage(false);
     }
   };
 
@@ -415,7 +458,7 @@ function SessionDetails({ session: initialSession, user, token, onBack }) {
                     </div>
                     <div className="participant-details">
                       <p className="participant-name">
-                        User #{participant.user_id}
+                        {participant.name || `User #${participant.user_id}`}
                         {participant.is_session_admin && <span className="admin-tag">HOST</span>}
                         {participant.user_id === user.user_id && <span className="you-tag">YOU</span>}
                       </p>
@@ -474,6 +517,57 @@ function SessionDetails({ session: initialSession, user, token, onBack }) {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Session Chat - Only visible to participants */}
+          {isParticipant && (
+            <div className="session-chat-section">
+              <h3>Session Chat</h3>
+              <div className="chat-messages">
+                {messages.length === 0 ? (
+                  <p className="no-messages">No messages yet. Start the conversation!</p>
+                ) : (
+                  messages.map(msg => (
+                    <div 
+                      key={msg.message_id} 
+                      className={`chat-message ${msg.user_id === user.user_id ? 'own-message' : ''}`}
+                    >
+                      <div className="message-header">
+                        <span className="message-sender">
+                          {msg.user_name || `User #${msg.user_id}`}
+                          {msg.user_id === user.user_id && ' (You)'}
+                        </span>
+                        <span className="message-time">
+                          {new Date(msg.created_at).toLocaleTimeString('en-US', {
+                            hour: 'numeric',
+                            minute: '2-digit',
+                            hour12: true
+                          })}
+                        </span>
+                      </div>
+                      <div className="message-content">{msg.message}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+              <form onSubmit={handleSendMessage} className="chat-input-form">
+                <input
+                  type="text"
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  placeholder="Type your message..."
+                  className="chat-input"
+                  maxLength={500}
+                />
+                <button 
+                  type="submit" 
+                  className="send-message-btn"
+                  disabled={sendingMessage || !newMessage.trim()}
+                >
+                  {sendingMessage ? '📤' : '📨'}
+                </button>
+              </form>
             </div>
           )}
         </div>
